@@ -1,0 +1,11 @@
+Build/*
+.vs
+*.ncb
+*.sdf
+*.suo
+*.vcproj.*
+*.vcxproj.user
+*.opensdf
+*.dll
+*.EXE
+*.orig
