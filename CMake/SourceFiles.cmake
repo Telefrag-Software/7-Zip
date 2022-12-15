@@ -1,4 +1,4 @@
-set(7ZIP_C_SOURCE_FILES
+set(SEVEN_ZIP_C_SOURCE_FILES
 	7z.h
 	7zBuf.h
 	7zDec.c
@@ -98,4 +98,4 @@ set(7ZIP_C_SOURCE_FILES
 	XzDec.c
 )
 
-source_group(Source                     REGULAR_EXPRESSION "C(PP)?.*\\.(h|c(pp)?)")
+source_group(Source REGULAR_EXPRESSION "C(PP)?.*\\.(h|c(pp)?)")
