@@ -26,6 +26,8 @@
 #include "Common/InStreamWithCRC.h"
 #include "Common/OutStreamWithCRC.h"
 
+#include "GzHandler.h"
+
 #define Get32(p) GetUi32(p)
 
 using namespace NWindows;
@@ -110,68 +112,46 @@ static const char * const kHostOSes[] =
   , "OS/X"
 };
 
+bool CItem::TestFlag(Byte flag) const { return (Flags & flag) != 0; }
 
-class CItem
+CItem::CItem():
+  Flags(0),
+  ExtraFlags(0),
+  HostOS(0),
+  Time(0),
+  Crc(0),
+  Size32(0) {}
+
+void CItem::Clear()
 {
-  bool TestFlag(Byte flag) const { return (Flags & flag) != 0; }
-public:
-  Byte Flags;
-  Byte ExtraFlags;
-  Byte HostOS;
-  UInt32 Time;
-  UInt32 Crc;
-  UInt32 Size32;
+  Name.Empty();
+  Comment.Empty();
+  // Extra.Free();
+}
 
-  AString Name;
-  AString Comment;
-  // CByteBuffer Extra;
+void CItem::CopyMetaPropsFrom(const CItem &a)
+{
+  Flags = a.Flags;
+  HostOS = a.HostOS;
+  Time = a.Time;
+  Name = a.Name;
+  Comment = a.Comment;
+  // Extra = a.Extra;
+}
 
-  CItem():
-    Flags(0),
-    ExtraFlags(0),
-    HostOS(0),
-    Time(0),
-    Crc(0),
-    Size32(0) {}
+void CItem::CopyDataPropsFrom(const CItem &a)
+{
+  ExtraFlags = a.ExtraFlags;
+  Crc = a.Crc;
+  Size32 = a.Size32;
+}
 
-  void Clear()
-  {
-    Name.Empty();
-    Comment.Empty();
-    // Extra.Free();
-  }
-
-  void CopyMetaPropsFrom(const CItem &a)
-  {
-    Flags = a.Flags;
-    HostOS = a.HostOS;
-    Time = a.Time;
-    Name = a.Name;
-    Comment = a.Comment;
-    // Extra = a.Extra;
-  }
-
-  void CopyDataPropsFrom(const CItem &a)
-  {
-    ExtraFlags = a.ExtraFlags;
-    Crc = a.Crc;
-    Size32 = a.Size32;
-  }
-  
-  // bool IsText() const { return TestFlag(NFlags::kIsText); }
-  bool HeaderCrcIsPresent() const { return TestFlag(NFlags::kCrc); }
-  bool ExtraFieldIsPresent() const { return TestFlag(NFlags::kExtra); }
-  bool NameIsPresent() const { return TestFlag(NFlags::kName); }
-  bool CommentIsPresent() const { return TestFlag(NFlags::kComment); }
-  bool IsSupported() const { return (Flags & NFlags::kReserved) == 0; }
-
-  HRESULT ReadHeader(NDecoder::CCOMCoder *stream);
-  HRESULT ReadFooter1(NDecoder::CCOMCoder *stream);
-  HRESULT ReadFooter2(ISequentialInStream *stream);
-
-  HRESULT WriteHeader(ISequentialOutStream *stream);
-  HRESULT WriteFooter(ISequentialOutStream *stream);
-};
+// bool CItem::IsText() const { return TestFlag(NFlags::kIsText); }
+bool CItem::HeaderCrcIsPresent() const { return TestFlag(NFlags::kCrc); }
+bool CItem::ExtraFieldIsPresent() const { return TestFlag(NFlags::kExtra); }
+bool CItem::NameIsPresent() const { return TestFlag(NFlags::kName); }
+bool CItem::CommentIsPresent() const { return TestFlag(NFlags::kComment); }
+bool CItem::IsSupported() const { return (Flags & NFlags::kReserved) == 0; }
 
 static HRESULT ReadBytes(NDecoder::CCOMCoder *stream, Byte *data, UInt32 size)
 {
@@ -447,52 +427,11 @@ HRESULT CItem::WriteFooter(ISequentialOutStream *stream)
   return WriteStream(stream, buf, 8);
 }
 
-class CHandler:
-  public IInArchive,
-  public IArchiveOpenSeq,
-  public IOutArchive,
-  public ISetProperties,
-  public CMyUnknownImp
+CHandler::CHandler()
 {
-  CItem _item;
-
-  bool _isArc;
-  bool _needSeekToStart;
-  bool _dataAfterEnd;
-  bool _needMoreInput;
-
-  bool _packSize_Defined;
-  bool _unpackSize_Defined;
-  bool _numStreams_Defined;
-
-  UInt64 _packSize;
-  UInt64 _unpackSize; // real unpack size (NOT from footer)
-  UInt64 _numStreams;
-  UInt64 _headerSize; // only start header (without footer)
-  
-  CMyComPtr<IInStream> _stream;
-  CMyComPtr<ICompressCoder> _decoder;
-  NDecoder::CCOMCoder *_decoderSpec;
-
-  CSingleMethodProps _props;
-
-public:
-  MY_UNKNOWN_IMP4(
-      IInArchive,
-      IArchiveOpenSeq,
-      IOutArchive,
-      ISetProperties)
-  INTERFACE_IInArchive(;)
-  INTERFACE_IOutArchive(;)
-  STDMETHOD(OpenSeq)(ISequentialInStream *stream);
-  STDMETHOD(SetProperties)(const wchar_t * const *names, const PROPVARIANT *values, UInt32 numProps);
-
-  CHandler()
-  {
-    _decoderSpec = new NDecoder::CCOMCoder;
-    _decoder = _decoderSpec;
-  }
-};
+  _decoderSpec = new NDecoder::CCOMCoder;
+  _decoder = _decoderSpec;
+}
 
 static const Byte kProps[] =
 {
@@ -596,17 +535,7 @@ STDMETHODIMP CHandler::GetProperty(UInt32 /* index */, PROPID propID, PROPVARIAN
   COM_TRY_END
 }
 
-class CCompressProgressInfoImp:
-  public ICompressProgressInfo,
-  public CMyUnknownImp
-{
-  CMyComPtr<IArchiveOpenCallback> Callback;
-public:
-  UInt64 Offset;
-  MY_UNKNOWN_IMP1(ICompressProgressInfo)
-  STDMETHOD(SetRatioInfo)(const UInt64 *inSize, const UInt64 *outSize);
-  void Init(IArchiveOpenCallback *callback) { Callback = callback; }
-};
+void CCompressProgressInfoImp::Init(IArchiveOpenCallback *callback) { Callback = callback; }
 
 STDMETHODIMP CCompressProgressInfoImp::SetRatioInfo(const UInt64 *inSize, const UInt64 * /* outSize */)
 {
@@ -1034,11 +963,35 @@ STDMETHODIMP CHandler::SetProperties(const wchar_t * const *names, const PROPVAR
 
 static const Byte k_Signature[] = { kSignature_0, kSignature_1, kSignature_2 };
 
-REGISTER_ARC_IO(
-  "gzip", "gz gzip tgz tpz apk", "* * .tar .tar .tar", 0xEF,
-  k_Signature,
-  0,
+static IInArchive * CreateArc() {
+  return new CHandler();
+}
+
+static IOutArchive * CreateArcOut() {
+  return new CHandler();
+}
+
+static const CArcInfo s_arcInfo = {
   NArcInfoFlags::kKeepName,
-  IsArc_Gz)
+  0xEF,
+  sizeof(k_Signature) / sizeof(k_Signature[0]),
+  0,
+  k_Signature,
+  "gzip",
+  "gz gzip tgz tpz apk",
+  "* * .tar .tar .tar",
+  CreateArc,
+  CreateArcOut,
+  IsArc_Gz
+};
+
+void CHandler::Register() {
+  static bool s_registered = false;
+
+  if(!s_registered) {
+    RegisterArc(&s_arcInfo);
+    s_registered = true;
+  }
+}
 
 }}

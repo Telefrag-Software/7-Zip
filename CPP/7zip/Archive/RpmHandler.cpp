@@ -19,6 +19,8 @@
 
 #include "HandlerCont.h"
 
+#include "RpmHandler.h"
+
 // #define _SHOW_RPM_METADATA
 
 using namespace NWindows;
@@ -28,11 +30,6 @@ using namespace NWindows;
 
 namespace NArchive {
 namespace NRpm {
-
-static const unsigned kNameSize = 66;
-static const unsigned kLeadSize = kNameSize + 30;
-static const unsigned k_HeaderSig_Size = 16;
-static const unsigned k_Entry_Size = 16;
 
 #define RPMSIG_NONE         0  // Old signature
 #define RPMSIG_PGP262_1024  1  // Old signature
@@ -126,128 +123,53 @@ static const char * const k_OS[] =
   , "Darwin" // "MacOSX" 21
 };
 
-struct CLead
+void CLead::Parse(const Byte *p)
 {
-  unsigned char Major;
-  unsigned char Minor;
-  UInt16 Type;
-  UInt16 Cpu;
-  UInt16 Os;
-  UInt16 SignatureType;
-  char Name[kNameSize];
-  // char Reserved[16];
+  Major = p[4];
+  Minor = p[5];
+  Type = Get16(p + 6);
+  Cpu= Get16(p + 8);
+  memcpy(Name, p + 10, kNameSize);
+  p += 10 + kNameSize;
+  Os = Get16(p);
+  SignatureType = Get16(p + 2);
+}
 
-  void Parse(const Byte *p)
-  {
-    Major = p[4];
-    Minor = p[5];
-    Type = Get16(p + 6);
-    Cpu= Get16(p + 8);
-    memcpy(Name, p + 10, kNameSize);
-    p += 10 + kNameSize;
-    Os = Get16(p);
-    SignatureType = Get16(p + 2);
-  }
+bool CLead::IsSupported() const { return Major >= 3 && Type <= 1; }
 
-  bool IsSupported() const { return Major >= 3 && Type <= 1; }
-};
-
-struct CEntry
+void CEntry::Parse(const Byte *p)
 {
-  UInt32 Tag;
-  UInt32 Type;
-  UInt32 Offset;
-  UInt32 Count;
-  
-  void Parse(const Byte *p)
-  {
-    Tag = Get32(p + 0);
-    Type = Get32(p + 4);
-    Offset = Get32(p + 8);
-    Count = Get32(p + 12);
-  }
-};
+  Tag = Get32(p + 0);
+  Type = Get32(p + 4);
+  Offset = Get32(p + 8);
+  Count = Get32(p + 12);
+}
 
-
-#ifdef _SHOW_RPM_METADATA
-struct CMetaFile
+void CHandler::SetTime(NCOM::CPropVariant &prop) const
 {
-  UInt32 Tag;
-  UInt32 Offset;
-  UInt32 Size;
-};
-#endif
+  if (_time_Defined && _buildTime != 0)
+  {
+    FILETIME ft;
+    NTime::UnixTimeToFileTime(_buildTime, ft);
+    prop = ft;
+  }
+}
 
-class CHandler: public CHandlerCont
+int CHandler::GetItem_ExtractInfo(UInt32 /* index */, UInt64 &pos, UInt64 &size) const
 {
-  UInt64 _headersSize; // is equal to start offset of payload data
-  UInt64 _payloadSize;
-  UInt64 _size;
-    // _size = _payloadSize, if (_payloadSize_Defined)
-    // _size = (fileSize - _headersSize), if (!_payloadSize_Defined)
-  UInt64 _phySize; // _headersSize + _payloadSize, if (_phySize_Defined)
-  UInt32 _headerPlusPayload_Size;
-  UInt32 _buildTime;
-  
-  bool _payloadSize_Defined;
-  bool _phySize_Defined;
-  bool _headerPlusPayload_Size_Defined;
-  bool _time_Defined;
+  pos = _headersSize;
+  size = _size;
+  return NExtract::NOperationResult::kOK;
+}
 
-  Byte _payloadSig[6]; // start data of payload
-
-  AString _name;    // p7zip
-  AString _version; // 9.20.1
-  AString _release; // 8.1.1
-  AString _arch;    // x86_64
-  AString _os;      // linux
-  
-  AString _format;      // cpio
-  AString _compressor;  // xz, gzip, bzip2
-
-  CLead _lead;
-
-  #ifdef _SHOW_RPM_METADATA
-  AString _metadata;
-  CRecordVector<CMetaFile> _metaFiles;
-  #endif
-
-  void SetTime(NCOM::CPropVariant &prop) const
-  {
-    if (_time_Defined && _buildTime != 0)
-    {
-      FILETIME ft;
-      NTime::UnixTimeToFileTime(_buildTime, ft);
-      prop = ft;
-    }
-  }
-
-  void SetStringProp(const AString &s, NCOM::CPropVariant &prop) const
-  {
-    UString us;
-    if (!ConvertUTF8ToUnicode(s, us))
-      us = GetUnicodeString(s);
-    if (!us.IsEmpty())
-      prop = us;
-  }
-
-  void AddCPU(AString &s) const;
-  AString GetBaseName() const;
-  void AddSubFileExtension(AString &res) const;
-
-  HRESULT ReadHeader(ISequentialInStream *stream, bool isMainHeader);
-  HRESULT Open2(ISequentialInStream *stream);
-
-  virtual int GetItem_ExtractInfo(UInt32 /* index */, UInt64 &pos, UInt64 &size) const
-  {
-    pos = _headersSize;
-    size = _size;
-    return NExtract::NOperationResult::kOK;
-  }
-
-public:
-  INTERFACE_IInArchive_Cont(;)
-};
+void CHandler::SetStringProp(const AString &s, NCOM::CPropVariant &prop) const
+{
+  UString us;
+  if (!ConvertUTF8ToUnicode(s, us))
+    us = GetUnicodeString(s);
+  if (!us.IsEmpty())
+    prop = us;
+}
 
 static const Byte kArcProps[] =
 {
@@ -764,11 +686,31 @@ STDMETHODIMP CHandler::GetNumberOfItems(UInt32 *numItems)
 
 static const Byte k_Signature[] = { 0xED, 0xAB, 0xEE, 0xDB};
 
-REGISTER_ARC_I(
-  "Rpm", "rpm", 0, 0xEB,
+static IInArchive * CreateArc() {
+  return new CHandler();
+}
+
+static const CArcInfo s_arcInfo = {
+  0,
+  0xEB,
+  sizeof(k_Signature) / sizeof(k_Signature[0]),
+  0,
   k_Signature,
+  "Rpm",
+  "rpm",
   0,
+  CreateArc,
   0,
-  NULL)
+  0
+};
+
+void CHandler::Register() {
+  static bool s_registered = false;
+
+  if(!s_registered) {
+    RegisterArc(&s_arcInfo);
+    s_registered = true;
+  }
+}
 
 }}

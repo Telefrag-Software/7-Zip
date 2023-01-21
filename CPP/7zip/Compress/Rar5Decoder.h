@@ -291,6 +291,8 @@ class CDecoder:
   HRESULT CodeReal();
   
 public:
+  static void Register();
+
   CDecoder();
   ~CDecoder();
 

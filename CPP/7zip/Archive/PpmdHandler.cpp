@@ -22,6 +22,8 @@ This code is based on:
 #include "../Common/RegisterArc.h"
 #include "../Common/StreamUtils.h"
 
+#include "Ppmdhandler.h"
+
 using namespace NWindows;
 
 namespace NArchive {
@@ -29,38 +31,20 @@ namespace NPpmd {
 
 static const UInt32 kBufSize = (1 << 20);
 
-struct CBuf
+CBuf::CBuf(): Buf(0) {}
+CBuf::~CBuf() { ::MidFree(Buf); }
+bool CBuf::Alloc()
 {
-  Byte *Buf;
-  
-  CBuf(): Buf(0) {}
-  ~CBuf() { ::MidFree(Buf); }
-  bool Alloc()
-  {
-    if (!Buf)
-      Buf = (Byte *)::MidAlloc(kBufSize);
-    return (Buf != 0);
-  }
-};
+  if (!Buf)
+    Buf = (Byte *)::MidAlloc(kBufSize);
+  return (Buf != 0);
+}
 
 static const UInt32 kHeaderSize = 16;
 static const UInt32 kSignature = 0x84ACAF8F;
 static const unsigned kNewHeaderVer = 8;
 
-struct CItem
-{
-  UInt32 Attrib;
-  UInt32 Time;
-  AString Name;
-  
-  unsigned Order;
-  unsigned MemInMB;
-  unsigned Ver;
-  unsigned Restor;
-
-  HRESULT ReadHeader(ISequentialInStream *s, UInt32 &headerSize);
-  bool IsSupported() const { return Ver == 7 || (Ver == 8 && Restor < PPMD8_RESTORE_METHOD_UNSUPPPORTED); }
-};
+bool CItem::IsSupported() const { return Ver == 7 || (Ver == 8 && Restor < PPMD8_RESTORE_METHOD_UNSUPPPORTED); }
 
 HRESULT CItem::ReadHeader(ISequentialInStream *s, UInt32 &headerSize)
 {
@@ -91,25 +75,6 @@ HRESULT CItem::ReadHeader(ISequentialInStream *s, UInt32 &headerSize)
   headerSize = kHeaderSize + nameLen;
   return res;
 }
-
-class CHandler:
-  public IInArchive,
-  public IArchiveOpenSeq,
-  public CMyUnknownImp
-{
-  CItem _item;
-  UInt32 _headerSize;
-  bool _packSize_Defined;
-  UInt64 _packSize;
-  CMyComPtr<ISequentialInStream> _stream;
-
-  void GetVersion(NCOM::CPropVariant &prop);
-
-public:
-  MY_UNKNOWN_IMP2(IInArchive, IArchiveOpenSeq)
-  INTERFACE_IInArchive(;)
-  STDMETHOD(OpenSeq)(ISequentialInStream *stream);
-};
 
 static const Byte kProps[] =
 {
@@ -218,65 +183,55 @@ STDMETHODIMP CHandler::Close()
   return S_OK;
 }
 
-
-
-struct CPpmdCpp
+CPpmdCpp::CPpmdCpp(unsigned version)
 {
-  unsigned Ver;
-  CPpmd7 _ppmd7;
-  CPpmd8 _ppmd8;
-  
-  CPpmdCpp(unsigned version)
-  {
-    Ver = version;
-    Ppmd7_Construct(&_ppmd7);
-    Ppmd8_Construct(&_ppmd8);
-  }
+  Ver = version;
+  Ppmd7_Construct(&_ppmd7);
+  Ppmd8_Construct(&_ppmd8);
+}
 
-  ~CPpmdCpp()
-  {
-    Ppmd7_Free(&_ppmd7, &g_BigAlloc);
-    Ppmd8_Free(&_ppmd8, &g_BigAlloc);
-  }
+CPpmdCpp::~CPpmdCpp()
+{
+  Ppmd7_Free(&_ppmd7, &g_BigAlloc);
+  Ppmd8_Free(&_ppmd8, &g_BigAlloc);
+}
 
-  bool Alloc(UInt32 memInMB)
-  {
-    memInMB <<= 20;
-    if (Ver == 7)
-      return Ppmd7_Alloc(&_ppmd7, memInMB, &g_BigAlloc) != 0;
-    return Ppmd8_Alloc(&_ppmd8, memInMB, &g_BigAlloc) != 0;
-  }
+bool CPpmdCpp::Alloc(UInt32 memInMB)
+{
+  memInMB <<= 20;
+  if (Ver == 7)
+    return Ppmd7_Alloc(&_ppmd7, memInMB, &g_BigAlloc) != 0;
+  return Ppmd8_Alloc(&_ppmd8, memInMB, &g_BigAlloc) != 0;
+}
 
-  void Init(unsigned order, unsigned restor)
-  {
-    if (Ver == 7)
-      Ppmd7_Init(&_ppmd7, order);
-    else
-      Ppmd8_Init(&_ppmd8, order, restor);;
-  }
-    
-  bool InitRc(CByteInBufWrap *inStream)
-  {
-    if (Ver == 7)
-    {
-      _ppmd7.rc.dec.Stream = &inStream->vt;
-      return (Ppmd7a_RangeDec_Init(&_ppmd7.rc.dec) != 0);
-    }
-    else
-    {
-      _ppmd8.Stream.In = &inStream->vt;
-      return Ppmd8_Init_RangeDec(&_ppmd8) != 0;
-    }
-  }
+void CPpmdCpp::Init(unsigned order, unsigned restor)
+{
+  if (Ver == 7)
+    Ppmd7_Init(&_ppmd7, order);
+  else
+    Ppmd8_Init(&_ppmd8, order, restor);;
+}
 
-  bool IsFinishedOK()
+bool CPpmdCpp::InitRc(CByteInBufWrap *inStream)
+{
+  if (Ver == 7)
   {
-    if (Ver == 7)
-      return Ppmd7z_RangeDec_IsFinishedOK(&_ppmd7.rc.dec);
-    return Ppmd8_RangeDec_IsFinishedOK(&_ppmd8);
+    _ppmd7.rc.dec.Stream = &inStream->vt;
+    return (Ppmd7a_RangeDec_Init(&_ppmd7.rc.dec) != 0);
   }
-};
+  else
+  {
+    _ppmd8.Stream.In = &inStream->vt;
+    return Ppmd8_Init_RangeDec(&_ppmd8) != 0;
+  }
+}
 
+bool CPpmdCpp::IsFinishedOK()
+{
+  if (Ver == 7)
+    return Ppmd7z_RangeDec_IsFinishedOK(&_ppmd7.rc.dec);
+  return Ppmd8_RangeDec_IsFinishedOK(&_ppmd8);
+}
 
 STDMETHODIMP CHandler::Extract(const UInt32 *indices, UInt32 numItems,
     Int32 testMode, IArchiveExtractCallback *extractCallback)
@@ -390,11 +345,31 @@ STDMETHODIMP CHandler::Extract(const UInt32 *indices, UInt32 numItems,
 
 static const Byte k_Signature[] = { 0x8F, 0xAF, 0xAC, 0x84 };
 
-REGISTER_ARC_I(
-  "Ppmd", "pmd", 0, 0xD,
+static IInArchive * CreateArc() {
+  return new CHandler();
+}
+
+static const CArcInfo s_arcInfo = {
+  0,
+  0xD,
+  sizeof(k_Signature) / sizeof(k_Signature[0]),
+  0,
   k_Signature,
+  "Ppmd",
+  "pmd",
   0,
+  CreateArc,
   0,
-  NULL)
+  0
+};
+
+void CHandler::Register() {
+  static bool s_registered = false;
+
+  if(!s_registered) {
+    RegisterArc(&s_arcInfo);
+    s_registered = true;
+  }
+}
 
 }}

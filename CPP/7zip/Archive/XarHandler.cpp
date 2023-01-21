@@ -25,6 +25,8 @@
 
 #include "Common/OutStreamWithSha1.h"
 
+#include "XarHandler.h"
+
 using namespace NWindows;
 
 #define XAR_SHOW_RAW
@@ -54,77 +56,25 @@ static const char * const k_ChecksumAlgos[] =
 
 #define METHOD_NAME_ZLIB "zlib"
 
+CFile::CFile():
+    Size(0), PackSize(0), Offset(0),
+    CTime(0), MTime(0), ATime(0), Mode(0),
+    IsDir(false), HasData(false), ModeDefined(false), Sha1IsDefined(false),
+    /* packSha1IsDefined(false), */
+    Parent(-1)
+    {}
 
-struct CFile
+bool CFile::IsCopyMethod() const
 {
-  AString Name;
-  AString Method;
-  UInt64 Size;
-  UInt64 PackSize;
-  UInt64 Offset;
-  
-  UInt64 CTime;
-  UInt64 MTime;
-  UInt64 ATime;
-  UInt32 Mode;
+  return Method.IsEmpty() || Method == "octet-stream";
+}
 
-  AString User;
-  AString Group;
-  
-  bool IsDir;
-  bool HasData;
-  bool ModeDefined;
-  bool Sha1IsDefined;
-  // bool packSha1IsDefined;
-
-  Byte Sha1[SHA1_DIGEST_SIZE];
-  // Byte packSha1[SHA1_DIGEST_SIZE];
-
-  int Parent;
-
-  CFile():
-      Size(0), PackSize(0), Offset(0),
-      CTime(0), MTime(0), ATime(0), Mode(0),
-      IsDir(false), HasData(false), ModeDefined(false), Sha1IsDefined(false),
-      /* packSha1IsDefined(false), */
-      Parent(-1)
-      {}
-
-  bool IsCopyMethod() const
-  {
-    return Method.IsEmpty() || Method == "octet-stream";
-  }
-
-  void UpdateTotalPackSize(UInt64 &totalSize) const
-  {
-    UInt64 t = Offset + PackSize;
-    if (totalSize < t)
-      totalSize = t;
-  }
-};
-
-class CHandler:
-  public IInArchive,
-  public IInArchiveGetStream,
-  public CMyUnknownImp
+void CFile::UpdateTotalPackSize(UInt64 &totalSize) const
 {
-  UInt64 _dataStartPos;
-  CMyComPtr<IInStream> _inStream;
-  CByteArr _xml;
-  size_t _xmlLen;
-  CObjectVector<CFile> _files;
-  // UInt32 _checkSumAlgo;
-  UInt64 _phySize;
-  Int32 _mainSubfile;
-  bool _is_pkg;
-
-  HRESULT Open2(IInStream *stream);
-  HRESULT Extract(IInStream *stream);
-public:
-  MY_UNKNOWN_IMP2(IInArchive, IInArchiveGetStream)
-  INTERFACE_IInArchive(;)
-  STDMETHOD(GetStream)(UInt32 index, ISequentialInStream **stream);
-};
+  UInt64 t = Offset + PackSize;
+  if (totalSize < t)
+    totalSize = t;
+}
 
 static const Byte kArcProps[] =
 {
@@ -725,11 +675,31 @@ STDMETHODIMP CHandler::GetStream(UInt32 index, ISequentialInStream **stream)
 
 static const Byte k_Signature[] = { 'x', 'a', 'r', '!', 0, 0x1C };
 
-REGISTER_ARC_I(
-  "Xar", "xar pkg xip", 0, 0xE1,
+static IInArchive * CreateArc() {
+  return new CHandler();
+}
+
+static const CArcInfo s_arcInfo = {
+  0,
+  0xE1,
+  sizeof(k_Signature) / sizeof(k_Signature[0]),
+  0,
   k_Signature,
+  "Xar",
+  "xar pkg xip",
   0,
+  CreateArc,
   0,
-  NULL)
+  0
+};
+
+void CHandler::Register() {
+  static bool s_registered = false;
+
+  if(!s_registered) {
+    RegisterArc(&s_arcInfo);
+    s_registered = true;
+  }
+}
 
 }}

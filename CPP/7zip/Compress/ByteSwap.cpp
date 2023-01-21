@@ -2,91 +2,56 @@
 
 #include "StdAfx.h"
 
-#include "../../Common/MyCom.h"
-
-#include "../ICoder.h"
-
 #include "../Common/RegisterCodec.h"
+
+#include "ByteSwap2Filter.h"
+#include "ByteSwap4Filter.h"
 
 namespace NCompress {
 namespace NByteSwap {
 
-class CByteSwap2:
-  public ICompressFilter,
-  public CMyUnknownImp
-{
-public:
-  MY_UNKNOWN_IMP1(ICompressFilter);
-  INTERFACE_ICompressFilter(;)
-};
-
-class CByteSwap4:
-  public ICompressFilter,
-  public CMyUnknownImp
-{
-public:
-  MY_UNKNOWN_IMP1(ICompressFilter);
-  INTERFACE_ICompressFilter(;)
-};
-
-STDMETHODIMP CByteSwap2::Init() { return S_OK; }
-
-STDMETHODIMP_(UInt32) CByteSwap2::Filter(Byte *data, UInt32 size)
-{
-  const UInt32 kStep = 2;
-  if (size < kStep)
-    return 0;
-  size &= ~(kStep - 1);
-  
-  const Byte *end = data + (size_t)size;
-  
-  do
-  {
-    Byte b0 = data[0];
-    data[0] = data[1];
-    data[1] = b0;
-    data += kStep;
-  }
-  while (data != end);
-
-  return size;
+static void * CreateFilter2() {
+  return (void *)(ICompressFilter *)(new CByteSwap2());
 }
 
-STDMETHODIMP CByteSwap4::Init() { return S_OK; }
-
-STDMETHODIMP_(UInt32) CByteSwap4::Filter(Byte *data, UInt32 size)
-{
-  const UInt32 kStep = 4;
-  if (size < kStep)
-    return 0;
-  size &= ~(kStep - 1);
-  
-  const Byte *end = data + (size_t)size;
-  
-  do
-  {
-    Byte b0 = data[0];
-    Byte b1 = data[1];
-    data[0] = data[3];
-    data[1] = data[2];
-    data[2] = b1;
-    data[3] = b0;
-    data += kStep;
-  }
-  while (data != end);
-
-  return size;
+static void * CreateFilter4() {
+  return (void *)(ICompressFilter *)(new CByteSwap4());
 }
 
-REGISTER_FILTER_CREATE(CreateFilter2, CByteSwap2())
-REGISTER_FILTER_CREATE(CreateFilter4, CByteSwap4())
-
-REGISTER_CODECS_VAR
-{
-  REGISTER_FILTER_ITEM(CreateFilter2, CreateFilter2, 0x20302, "Swap2"),
-  REGISTER_FILTER_ITEM(CreateFilter4, CreateFilter4, 0x20304, "Swap4")
+static const CCodecInfo s_codecInfo_ByteSwap2 {
+  CreateFilter2,
+  CreateFilter2,
+  0x20302,
+  "Swap2",
+  1,
+  true
 };
 
-REGISTER_CODECS(ByteSwap)
+static const CCodecInfo s_codecInfo_ByteSwap4 {
+  CreateFilter4,
+  CreateFilter4,
+  0x20304,
+  "Swap4",
+  1,
+  true
+};
+
+void CByteSwap2::Register() {
+  static bool s_registered = false;
+
+  if(!s_registered) {
+    RegisterCodec(&s_codecInfo_ByteSwap2);
+    s_registered = true;
+  }
+}
+
+void CByteSwap4::Register() {
+  static bool s_registered = false;
+
+  if(!s_registered) {
+    RegisterCodec(&s_codecInfo_ByteSwap4);
+    s_registered = true;
+  }
+}
 
 }}

@@ -20,6 +20,8 @@
 
 #include "../Compress/CopyCoder.h"
 
+#include "ComHandler.h"
+
 #define Get16(p) GetUi16(p)
 #define Get32(p) GetUi32(p)
 
@@ -28,16 +30,6 @@ namespace NCom {
 
 #define SIGNATURE { 0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1 }
 static const Byte kSignature[] = SIGNATURE;
-
-enum EType
-{
-  k_Type_Common,
-  k_Type_Msi,
-  k_Type_Msp,
-  k_Type_Doc,
-  k_Type_Ppt,
-  k_Type_Xls
-};
 
 static const char * const kExtensions[] =
 {
@@ -49,119 +41,18 @@ static const char * const kExtensions[] =
   , "xls"
 };
 
-namespace NFatID
+bool CDatabase::IsNotArcType() const
 {
-  // static const UInt32 kFree       = 0xFFFFFFFF;
-  static const UInt32 kEndOfChain = 0xFFFFFFFE;
-  // static const UInt32 kFatSector  = 0xFFFFFFFD;
-  // static const UInt32 kMatSector  = 0xFFFFFFFC;
-  static const UInt32 kMaxValue   = 0xFFFFFFFA;
+  return
+    Type != k_Type_Msi &&
+    Type != k_Type_Msp;
 }
 
-namespace NItemType
+void CDatabase::UpdatePhySize(UInt64 val)
 {
-  static const Byte kEmpty = 0;
-  static const Byte kStorage = 1;
-  // static const Byte kStream = 2;
-  // static const Byte kLockBytes = 3;
-  // static const Byte kProperty = 4;
-  static const Byte kRootStorage = 5;
+  if (PhySize < val)
+    PhySize = val;
 }
-
-static const UInt32 kNameSizeMax = 64;
-
-struct CItem
-{
-  Byte Name[kNameSizeMax];
-  // UInt16 NameSize;
-  // UInt32 Flags;
-  FILETIME CTime;
-  FILETIME MTime;
-  UInt64 Size;
-  UInt32 LeftDid;
-  UInt32 RightDid;
-  UInt32 SonDid;
-  UInt32 Sid;
-  Byte Type;
-
-  bool IsEmpty() const { return Type == NItemType::kEmpty; }
-  bool IsDir() const { return Type == NItemType::kStorage || Type == NItemType::kRootStorage; }
-
-  void Parse(const Byte *p, bool mode64bit);
-};
-
-struct CRef
-{
-  int Parent;
-  UInt32 Did;
-};
-
-class CDatabase
-{
-  UInt32 NumSectorsInMiniStream;
-  CObjArray<UInt32> MiniSids;
-
-  HRESULT AddNode(int parent, UInt32 did);
-public:
-
-  CObjArray<UInt32> Fat;
-  UInt32 FatSize;
-  
-  CObjArray<UInt32> Mat;
-  UInt32 MatSize;
-
-  CObjectVector<CItem> Items;
-  CRecordVector<CRef> Refs;
-
-  UInt32 LongStreamMinSize;
-  unsigned SectorSizeBits;
-  unsigned MiniSectorSizeBits;
-
-  Int32 MainSubfile;
-
-  UInt64 PhySize;
-  EType Type;
-
-  bool IsNotArcType() const
-  {
-    return
-      Type != k_Type_Msi &&
-      Type != k_Type_Msp;
-  }
-
-  void UpdatePhySize(UInt64 val)
-  {
-    if (PhySize < val)
-      PhySize = val;
-  }
-  HRESULT ReadSector(IInStream *inStream, Byte *buf, unsigned sectorSizeBits, UInt32 sid);
-  HRESULT ReadIDs(IInStream *inStream, Byte *buf, unsigned sectorSizeBits, UInt32 sid, UInt32 *dest);
-
-  HRESULT Update_PhySize_WithItem(unsigned index);
-
-  void Clear();
-  bool IsLargeStream(UInt64 size) const { return size >= LongStreamMinSize; }
-  UString GetItemPath(UInt32 index) const;
-
-  UInt64 GetItemPackSize(UInt64 size) const
-  {
-    UInt64 mask = ((UInt64)1 << (IsLargeStream(size) ? SectorSizeBits : MiniSectorSizeBits)) - 1;
-    return (size + mask) & ~mask;
-  }
-
-  bool GetMiniCluster(UInt32 sid, UInt64 &res) const
-  {
-    unsigned subBits = SectorSizeBits - MiniSectorSizeBits;
-    UInt32 fid = sid >> subBits;
-    if (fid >= NumSectorsInMiniStream)
-      return false;
-    res = (((UInt64)MiniSids[fid] + 1) << subBits) + (sid & ((1 << subBits) - 1));
-    return true;
-  }
-
-  HRESULT Open(IInStream *inStream);
-};
-
 
 HRESULT CDatabase::ReadSector(IInStream *inStream, Byte *buf, unsigned sectorSizeBits, UInt32 sid)
 {
@@ -184,6 +75,9 @@ static void GetFileTimeFromMem(const Byte *p, FILETIME *ft)
   ft->dwLowDateTime = Get32(p);
   ft->dwHighDateTime = Get32(p + 4);
 }
+
+bool CItem::IsEmpty() const { return Type == NItemType::kEmpty; }
+bool CItem::IsDir() const { return Type == NItemType::kStorage || Type == NItemType::kRootStorage; }
 
 void CItem::Parse(const Byte *p, bool mode64bit)
 {
@@ -211,6 +105,24 @@ void CDatabase::Clear()
   Mat.Free();
   Items.Clear();
   Refs.Clear();
+}
+
+bool CDatabase::IsLargeStream(UInt64 size) const { return size >= LongStreamMinSize; }
+
+UInt64 CDatabase::GetItemPackSize(UInt64 size) const
+{
+  UInt64 mask = ((UInt64)1 << (IsLargeStream(size) ? SectorSizeBits : MiniSectorSizeBits)) - 1;
+  return (size + mask) & ~mask;
+}
+
+bool CDatabase::GetMiniCluster(UInt32 sid, UInt64 &res) const
+{
+  unsigned subBits = SectorSizeBits - MiniSectorSizeBits;
+  UInt32 fid = sid >> subBits;
+  if (fid >= NumSectorsInMiniStream)
+    return false;
+  res = (((UInt64)MiniSids[fid] + 1) << subBits) + (sid & ((1 << subBits) - 1));
+  return true;
 }
 
 static const UInt32 kNoDid = 0xFFFFFFFF;
@@ -634,19 +546,6 @@ HRESULT CDatabase::Open(IInStream *inStream)
   return S_OK;
 }
 
-class CHandler:
-  public IInArchive,
-  public IInArchiveGetStream,
-  public CMyUnknownImp
-{
-  CMyComPtr<IInStream> _stream;
-  CDatabase _db;
-public:
-  MY_UNKNOWN_IMP2(IInArchive, IInArchiveGetStream)
-  INTERFACE_IInArchive(;)
-  STDMETHOD(GetStream)(UInt32 index, ISequentialInStream **stream);
-};
-
 static const Byte kProps[] =
 {
   kpidPath,
@@ -870,11 +769,32 @@ STDMETHODIMP CHandler::GetStream(UInt32 index, ISequentialInStream **stream)
   COM_TRY_END
 }
 
-REGISTER_ARC_I(
-  "Compound", "msi msp doc xls ppt", 0, 0xE5,
+static IInArchive * CreateArc() {
+  return new CHandler();
+}
+
+static const CArcInfo s_arcInfo = {
+  0,
+  0xE5,
+  sizeof(kSignature) / sizeof(kSignature[0]),
+  0,
   kSignature,
+  "Compound",
+  "msi msp doc xls ppt",
   0,
+  CreateArc,
   0,
-  NULL)
+  0
+};
+
+void CHandler::Register() {
+  static bool s_registered = false;
+
+  if(!s_registered) {
+    RegisterArc(&s_arcInfo);
+
+    s_registered = true;
+  }
+}
 
 }}

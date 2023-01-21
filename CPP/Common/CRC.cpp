@@ -2,6 +2,17 @@
 
 #include "StdAfx.h"
 
-#include "../../C/7zCrc.h"
+#include "CRCHasher.h"
 
-static struct CCRCTableInit { CCRCTableInit() { CrcGenerateTable(); } } g_CRCTableInit;
+namespace NHash {
+
+void CCrcHasher::Initialize() {
+  static bool s_initialized = false;
+
+  if(!s_initialized) {
+    CrcGenerateTable();
+    s_initialized = true;
+  }
+}
+
+}

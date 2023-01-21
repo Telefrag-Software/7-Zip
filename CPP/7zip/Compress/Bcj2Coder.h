@@ -42,6 +42,8 @@ class CEncoder:
       ICompressProgressInfo *progress);
 
 public:
+  static void Register();
+
   MY_UNKNOWN_IMP3(ICompressCoder2, ICompressSetCoderProperties, ICompressSetBufSize)
 
   STDMETHOD(Code)(ISequentialInStream * const *inStreams, const UInt64 * const *inSizes, UInt32 numInStreams,

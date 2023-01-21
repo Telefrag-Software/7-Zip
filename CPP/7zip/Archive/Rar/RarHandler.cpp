@@ -49,7 +49,7 @@ namespace NRar {
 static const Byte kMarker[NHeader::kMarkerSize] = SIGNATURE;
 
 const unsigned kPasswordLen_MAX = 127;
-      
+
 bool CItem::IgnoreItem() const
 {
   switch (HostOS)
@@ -1777,11 +1777,31 @@ STDMETHODIMP CHandler::Extract(const UInt32 *indices, UInt32 numItems,
 
 IMPL_ISetCompressCodecsInfo
 
-REGISTER_ARC_I(
-  "Rar", "rar r00", 0, 3,
-  kMarker,
-  0,
+static IInArchive * CreateArc() {
+  return new CHandler();
+}
+
+static const CArcInfo s_arcInfo = {
   NArcInfoFlags::kFindSignature,
-  NULL)
+  3,
+  sizeof(kMarker) / sizeof(kMarker[0]),
+  0,
+  kMarker,
+  "Rar",
+  "rar r00",
+  0,
+  CreateArc,
+  0,
+  0
+};
+
+void CHandler::Register() {
+  static bool s_registered = false;
+
+  if(!s_registered) {
+    RegisterArc(&s_arcInfo);
+    s_registered = true;
+  }
+}
 
 }}

@@ -22,6 +22,8 @@
 
 #include "../Compress/CopyCoder.h"
 
+#include "PeHandler.h"
+
 #define Get16(p) GetUi16(p)
 #define Get32(p) GetUi32(p)
 #define Get64(p) GetUi64(p)
@@ -100,19 +102,11 @@ static HRESULT CalcCheckSum(ISequentialInStream *stream, UInt32 size, UInt32 exc
   return S_OK;
 }
 
-
-struct CVersion
+void CVersion::Parse(const Byte *p)
 {
-  UInt16 Major;
-  UInt16 Minor;
-
-  void Parse(const Byte *p)
-  {
-    G16(0, Major);
-    G16(2, Minor);
-  }
-  void ToProp(NCOM::CPropVariant &prop);
-};
+  G16(0, Major);
+  G16(2, Minor);
+}
 
 void CVersion::ToProp(NCOM::CPropVariant &prop)
 {
@@ -131,21 +125,7 @@ static const unsigned k_OptHeader64_Size_MIN = 112;
 
 static const UInt32 PE_IMAGE_FILE_DLL  = (1 << 13);
 
-struct CHeader
-{
-  UInt16 Machine;
-  UInt16 NumSections;
-  UInt32 Time;
-  UInt32 PointerToSymbolTable;
-  UInt32 NumSymbols;
-  UInt16 OptHeaderSize;
-  UInt16 Flags;
-
-  void ParseBase(const Byte *p);
-  bool ParseCoff(const Byte *p);
-  bool ParsePe(const Byte *p);
-  bool IsDll() const { return (Flags & PE_IMAGE_FILE_DLL) != 0; }
-};
+bool CHeader::IsDll() const { return (Flags & PE_IMAGE_FILE_DLL) != 0; }
 
 void CHeader::ParseBase(const Byte *p)
 {
@@ -166,18 +146,13 @@ bool CHeader::ParsePe(const Byte *p)
   return OptHeaderSize >= k_OptHeader32_Size_MIN;
 }
 
-struct CDirLink
+CDirLink::CDirLink(): Va(0), Size(0) {}
+
+void CDirLink::Parse(const Byte *p)
 {
-  UInt32 Va;
-  UInt32 Size;
-  
-  CDirLink(): Va(0), Size(0) {}
-  void Parse(const Byte *p)
-  {
-    G32(0, Va);
-    G32(4, Size);
-  }
-};
+  G32(0, Va);
+  G32(4, Size);
+}
 
 enum
 {
@@ -185,29 +160,16 @@ enum
   kDirLink_Debug = 6
 };
 
-static const UInt32 kNumDirItemsMax = 16;
-
-struct CDebugEntry
+void CDebugEntry::Parse(const Byte *p)
 {
-  UInt32 Flags;
-  UInt32 Time;
-  CVersion Ver;
-  UInt32 Type;
-  UInt32 Size;
-  UInt32 Va;
-  UInt32 Pa;
-  
-  void Parse(const Byte *p)
-  {
-    G32(0, Flags);
-    G32(4, Time);
-    Ver.Parse(p + 8);
-    G32(12, Type);
-    G32(16, Size);
-    G32(20, Va);
-    G32(24, Pa);
-  }
-};
+  G32(0, Flags);
+  G32(4, Time);
+  Ver.Parse(p + 8);
+  G32(12, Type);
+  G32(16, Size);
+  G32(20, Va);
+  G32(24, Pa);
+}
 
 static const UInt32 k_CheckSum_Field_Offset = 64;
 
@@ -217,60 +179,22 @@ static const UInt32 PE_OptHeader_Magic_64 = 0x20B;
 static const UInt32 k_SubSystems_EFI_First = 10;
 static const UInt32 k_SubSystems_EFI_Last = 13;
 
-struct COptHeader
+bool COptHeader::Is64Bit() const { return Magic == PE_OptHeader_Magic_64; }
+
+int COptHeader::GetNumFileAlignBits() const
 {
-  UInt16 Magic;
-  Byte LinkerVerMajor;
-  Byte LinkerVerMinor;
+  for (unsigned i = 0; i <= 31; i++)
+    if (((UInt32)1 << i) == FileAlign)
+      return i;
+  return -1;
+}
 
-  UInt32 CodeSize;
-  UInt32 InitDataSize;
-  UInt32 UninitDataSize;
-  
-  // UInt32 AddressOfEntryPoint;
-  // UInt32 BaseOfCode;
-  // UInt32 BaseOfData32;
-  UInt64 ImageBase;
-
-  UInt32 SectAlign;
-  UInt32 FileAlign;
-
-  CVersion OsVer;
-  CVersion ImageVer;
-  CVersion SubsysVer;
-  
-  UInt32 ImageSize;
-  UInt32 HeadersSize;
-  UInt32 CheckSum;
-  UInt16 SubSystem;
-  UInt16 DllCharacts;
-
-  UInt64 StackReserve;
-  UInt64 StackCommit;
-  UInt64 HeapReserve;
-  UInt64 HeapCommit;
-
-  UInt32 NumDirItems;
-  CDirLink DirItems[kNumDirItemsMax];
-
-  bool Is64Bit() const { return Magic == PE_OptHeader_Magic_64; }
-  bool Parse(const Byte *p, UInt32 size);
-
-  int GetNumFileAlignBits() const
-  {
-    for (unsigned i = 0; i <= 31; i++)
-      if (((UInt32)1 << i) == FileAlign)
-        return i;
-    return -1;
-  }
-
-  bool IsSybSystem_EFI() const
-  {
-    return
-        SubSystem >= k_SubSystems_EFI_First &&
-        SubSystem <= k_SubSystems_EFI_Last;
-  }
-};
+bool COptHeader::IsSybSystem_EFI() const
+{
+  return
+      SubSystem >= k_SubSystems_EFI_First &&
+      SubSystem <= k_SubSystems_EFI_Last;
+}
 
 bool COptHeader::Parse(const Byte *p, UInt32 size)
 {
@@ -346,45 +270,25 @@ bool COptHeader::Parse(const Byte *p, UInt32 size)
 
 static const UInt32 kSectionSize = 40;
 
-struct CSection
+CSection::CSection(): IsRealSect(false), IsDebug(false), IsAdditionalSection(false) {}
+
+UInt32 CSection::GetSizeExtract() const { return PSize; }
+UInt32 CSection::GetSizeMin() const { return MyMin(PSize, VSize); }
+
+void CSection::UpdateTotalSize(UInt32 &totalSize) const
 {
-  AString Name;
+  UInt32 t = Pa + PSize;
+  if (totalSize < t)
+    totalSize = t;
+}
 
-  UInt32 VSize;
-  UInt32 Va;
-  UInt32 PSize;
-  UInt32 Pa;
-  UInt32 Flags;
-  UInt32 Time;
-  // UInt16 NumRelocs;
-  bool IsRealSect;
-  bool IsDebug;
-  bool IsAdditionalSection;
-
-  CSection(): IsRealSect(false), IsDebug(false), IsAdditionalSection(false) {}
-
-  UInt32 GetSizeExtract() const { return PSize; }
-  UInt32 GetSizeMin() const { return MyMin(PSize, VSize); }
-
-  void UpdateTotalSize(UInt32 &totalSize) const
-  {
-    UInt32 t = Pa + PSize;
-    if (totalSize < t)
-      totalSize = t;
-  }
-  
-  void Parse(const Byte *p);
-
-  int Compare(const CSection &s) const
-  {
-    RINOZ(MyCompare(Pa, s.Pa));
-    UInt32 size1 = GetSizeExtract();
-    UInt32 size2 = s.GetSizeExtract();
-    return MyCompare(size1, size2);
-  }
-};
-
-static const unsigned kNameSize = 8;
+int CSection::Compare(const CSection &s) const
+{
+  RINOZ(MyCompare(Pa, s.Pa));
+  UInt32 size1 = GetSizeExtract();
+  UInt32 size2 = s.GetSizeExtract();
+  return MyCompare(size1, size2);
+}
 
 static void GetName(const Byte *name, AString &res)
 {
@@ -574,69 +478,34 @@ static const char * const g_ResTypes[] =
 static const UInt32 kFlag = (UInt32)1 << 31;
 static const UInt32 kMask = ~kFlag;
 
-struct CTableItem
+bool CResItem::IsNameEqual(const CResItem &item) const { return Lang == item.Lang; }
+UInt32 CResItem::GetSize() const { return Size + HeaderSize; }
+bool CResItem::IsBmp() const { return Type == 2; }
+bool CResItem::IsIcon() const { return Type == 3; }
+bool CResItem::IsString() const { return Type == 6; }
+bool CResItem::IsRcData() const { return Type == 10; }
+bool CResItem::IsVersion() const { return Type == 16; }
+bool CResItem::IsRcDataOrUnknown() const { return IsRcData() || Type > 64; }
+
+size_t CTextFile::FinalSize() const { return Buf.GetPos(); }
+
+void CTextFile::AddBytes(const Byte *p, size_t size)
 {
-  UInt32 Offset;
-  UInt32 ID;
-};
+  Buf.AddData(p, size);
+}
 
-
-static const UInt32 kBmpHeaderSize = 14;
-static const UInt32 kIconHeaderSize = 22;
-
-struct CResItem
+void CTextFile::OpenBlock(int num)
 {
-  UInt32 Type;
-  UInt32 ID;
-  UInt32 Lang;
-
-  UInt32 Size;
-  UInt32 Offset;
-
-  UInt32 HeaderSize;
-  Byte Header[kIconHeaderSize]; // it must be enough for max size header.
-  bool Enabled;
-
-  bool IsNameEqual(const CResItem &item) const { return Lang == item.Lang; }
-  UInt32 GetSize() const { return Size + HeaderSize; }
-  bool IsBmp() const { return Type == 2; }
-  bool IsIcon() const { return Type == 3; }
-  bool IsString() const { return Type == 6; }
-  bool IsRcData() const { return Type == 10; }
-  bool IsVersion() const { return Type == 16; }
-  bool IsRcDataOrUnknown() const { return IsRcData() || Type > 64; }
-};
-
-struct CTextFile
+  AddSpaces(num);
+  AddChar('{');
+  NewLine();
+}
+void CTextFile::CloseBlock(int num)
 {
-  CByteDynamicBuffer Buf;
-
-  size_t FinalSize() const { return Buf.GetPos(); }
-
-  void AddChar(Byte c);
-  void AddWChar(UInt16 c);
-  void AddWChar_Smart(UInt16 c);
-  void NewLine();
-  void AddString(const char *s);
-  void AddSpaces(int num);
-  void AddBytes(const Byte *p, size_t size)
-  {
-    Buf.AddData(p, size);
-  }
-  
-  void OpenBlock(int num)
-  {
-    AddSpaces(num);
-    AddChar('{');
-    NewLine();
-  }
-  void CloseBlock(int num)
-  {
-    AddSpaces(num);
-    AddChar('}');
-    NewLine();
-  }
-};
+  AddSpaces(num);
+  AddChar('}');
+  NewLine();
+}
 
 void CTextFile::AddChar(Byte c)
 {
@@ -684,129 +553,46 @@ void CTextFile::AddSpaces(int num)
     AddChar(' ');
 }
 
-struct CStringItem: public CTextFile
+CMixItem::CMixItem(): SectionIndex(-1), ResourceIndex(-1), StringIndex(-1), VersionIndex(-1) {}
+bool CMixItem::IsSectionItem() const { return ResourceIndex < 0 && StringIndex < 0 && VersionIndex < 0; }
+
+void CUsedBitmap::Alloc(size_t size)
 {
-  UInt32 Lang;
-};
+  size = (size + 7) / 8;
+  Buf.Alloc(size);
+  memset(Buf, 0, size);
+}
 
-struct CByteBuffer_WithLang: public CByteBuffer
+void CUsedBitmap::Free()
 {
-  UInt32 Lang;
-};
+  Buf.Free();
+}
 
-
-struct CMixItem
+bool CUsedBitmap::SetRange(size_t from, unsigned size)
 {
-  int SectionIndex;
-  int ResourceIndex;
-  int StringIndex;
-  int VersionIndex;
-
-  CMixItem(): SectionIndex(-1), ResourceIndex(-1), StringIndex(-1), VersionIndex(-1) {}
-  bool IsSectionItem() const { return ResourceIndex < 0 && StringIndex < 0 && VersionIndex < 0; }
-};
-
-struct CUsedBitmap
-{
-  CByteBuffer Buf;
-public:
-  void Alloc(size_t size)
+  for (unsigned i = 0; i < size; i++)
   {
-    size = (size + 7) / 8;
-    Buf.Alloc(size);
-    memset(Buf, 0, size);
+    size_t pos = (from + i) >> 3;
+    Byte mask = (Byte)(1 << ((from + i) & 7));
+    Byte b = Buf[pos];
+    if ((b & mask) != 0)
+      return false;
+    Buf[pos] = (Byte)(b | mask);
   }
-  
-  void Free()
-  {
-    Buf.Free();
-  }
-  
-  bool SetRange(size_t from, unsigned size)
-  {
-    for (unsigned i = 0; i < size; i++)
-    {
-      size_t pos = (from + i) >> 3;
-      Byte mask = (Byte)(1 << ((from + i) & 7));
-      Byte b = Buf[pos];
-      if ((b & mask) != 0)
-        return false;
-      Buf[pos] = (Byte)(b | mask);
-    }
-    return true;
-  }
-};
- 
-struct CStringKeyValue
+  return true;
+}
+
+bool CHandler::IsOpt() const { return _header.OptHeaderSize != 0; }
+
+bool CHandler::CheckItem(const CSection &sect, const CResItem &item, size_t offset) const
 {
-  UString Key;
-  UString Value;
-};
+  return item.Offset >= sect.Va && offset <= _buf.Size() && _buf.Size() - offset >= item.Size;
+}
 
-class CHandler:
-  public IInArchive,
-  public IInArchiveGetStream,
-  public IArchiveAllowTail,
-  public CMyUnknownImp
-{
-  CMyComPtr<IInStream> _stream;
-  CObjectVector<CSection> _sections;
-  CHeader _header;
-  UInt32 _totalSize;
-  Int32 _mainSubfile;
-
-  CRecordVector<CMixItem> _mixItems;
-  CRecordVector<CResItem> _items;
-  CObjectVector<CStringItem> _strings;
-  CObjectVector<CByteBuffer_WithLang> _versionFiles;
-  UString _versionFullString;
-  UString _versionShortString;
-  UString _originalFilename;
-  CObjectVector<CStringKeyValue> _versionKeys;
-
-  CByteBuffer _buf;
-  bool _oneLang;
-  UString _resourcesPrefix;
-  CUsedBitmap _usedRes;
-  // bool _parseResources;
-  bool _checksumError;
-
-  bool IsOpt() const { return _header.OptHeaderSize != 0; }
-
-  COptHeader _optHeader;
-
-  bool _coffMode;
-  bool _allowTail;
-
-  HRESULT LoadDebugSections(IInStream *stream, bool &thereIsSection);
-  HRESULT Open2(IInStream *stream, IArchiveOpenCallback *callback);
-
-  void AddResNameToString(UString &s, UInt32 id) const;
-  void AddLangPrefix(UString &s, UInt32 lang) const;
-  HRESULT ReadString(UInt32 offset, UString &dest) const;
-  HRESULT ReadTable(UInt32 offset, CRecordVector<CTableItem> &items);
-  bool ParseStringRes(UInt32 id, UInt32 lang, const Byte *src, UInt32 size);
-  HRESULT OpenResources(unsigned sectIndex, IInStream *stream, IArchiveOpenCallback *callback);
-  void CloseResources();
-
-
-  bool CheckItem(const CSection &sect, const CResItem &item, size_t offset) const
-  {
-    return item.Offset >= sect.Va && offset <= _buf.Size() && _buf.Size() - offset >= item.Size;
-  }
-
-public:
-  CHandler(bool coffMode = false):
-        _coffMode(coffMode),
-        _allowTail(coffMode)
-        {}
-
-  MY_UNKNOWN_IMP3(IInArchive, IInArchiveGetStream, IArchiveAllowTail)
-  INTERFACE_IInArchive(;)
-  STDMETHOD(GetStream)(UInt32 index, ISequentialInStream **stream);
-  STDMETHOD(AllowTail)(Int32 allowTail);
-};
-
+CHandler::CHandler(bool coffMode):
+      _coffMode(coffMode),
+      _allowTail(coffMode)
+      {}
 
 enum
 {
@@ -1254,20 +1040,6 @@ static const UInt32 kFileSizeMax = (UInt32)1 << 31;
 static const unsigned kNumResItemsMax = (unsigned)1 << 23;
 static const unsigned kNumStringLangsMax = 256;
 
-// BITMAPINFOHEADER
-struct CBitmapInfoHeader
-{
-  // UInt32 HeaderSize;
-  UInt32 XSize;
-  Int32 YSize;
-  UInt16 Planes;
-  UInt16 BitCount;
-  UInt32 Compression;
-  UInt32 SizeImage;
-
-  bool Parse(const Byte *p, size_t size);
-};
-
 static const UInt32 kBitmapInfoHeader_Size = 0x28;
 
 bool CBitmapInfoHeader::Parse(const Byte *p, size_t size)
@@ -1433,26 +1205,6 @@ bool CHandler::ParseStringRes(UInt32 id, UInt32 lang, const Byte *src, UInt32 si
 // ---------- VERSION ----------
 
 static const UInt32 kMy_VS_FFI_SIGNATURE = 0xFEEF04BD;
-
-struct CMy_VS_FIXEDFILEINFO
-{
-  // UInt32 Signature;
-  // UInt32 StrucVersion;
-  UInt32 VersionMS;
-  UInt32 VersionLS;
-  UInt32 ProductVersionMS;
-  UInt32 ProductVersionLS;
-  UInt32 FlagsMask;
-  UInt32 Flags;
-  UInt32 OS;
-  UInt32 Type;
-  UInt32 Subtype;
-  UInt32 DateMS;
-  UInt32 DateLS;
-
-  bool Parse(const Byte *p);
-  void PrintToTextFile(CTextFile &f, CObjectVector<CStringKeyValue> &keys);
-};
 
 bool CMy_VS_FIXEDFILEINFO::Parse(const Byte *p)
 {
@@ -1756,16 +1508,6 @@ static bool CompareWStrStrings(const Byte *p, const char *s)
       return true;
   }
 }
-
-struct CVersionBlock
-{
-  UInt32 TotalLen;
-  UInt32 ValueLen;
-  bool IsTextValue;
-  unsigned StrSize;
-
-  bool Parse(const Byte *p, UInt32 size);
-};
 
 static int Get_Utf16Str_Len_InBytes(const Byte *p, size_t size)
 {
@@ -2816,12 +2558,23 @@ STDMETHODIMP CHandler::AllowTail(Int32 allowTail)
 
 static const Byte k_Signature[] = { 'M', 'Z' };
 
-REGISTER_ARC_I(
-  "PE", "exe dll sys", 0, 0xDD,
-  k_Signature,
-  0,
+static IInArchive * CreateArc() {
+  return new CHandler();
+}
+
+static const CArcInfo s_arcInfo = {
   NArcInfoFlags::kPreArc,
-  IsArc_Pe)
+  0xDD,
+  sizeof(k_Signature) / sizeof(k_Signature[0]),
+  0,
+  k_Signature,
+  "PE",
+  "exe dll sys",
+  0,
+  CreateArc,
+  0,
+  IsArc_Pe
+};
 
 }
 
@@ -2848,32 +2601,43 @@ static const Byte k_Signature[] =
 REGISTER_ARC_I_CLS(
 */
 
-REGISTER_ARC_I_CLS_NO_SIG(
-  NPe::CHandler(true),
-  "COFF", "obj", 0, 0xC6,
-  // k_Signature,
-  0,
-  // NArcInfoFlags::kMultiSignature |
-  NArcInfoFlags::kStartOpen,
-  IsArc_Coff)
+static IInArchive * CreateArc() {
+  return new NPe::CHandler(true);
 }
 
+static const CArcInfo s_arcInfo = {
+  NArcInfoFlags::kStartOpen,
+  0xC6,
+  0,
+  0,
+  0,
+  "COFF",
+  "obj",
+  0,
+  CreateArc,
+  0,
+  IsArc_Coff
+};
+
+}
+
+void NPe::CHandler::Register() {
+  static bool s_registered = false;
+
+  if(!s_registered) {
+    RegisterArc(&NPe::s_arcInfo);
+    RegisterArc(&NCoff::s_arcInfo);
+    s_registered = true;
+  }
+}
 
 namespace NTe {
 
-// Terse Executable (TE) image
-
-struct CDataDir
+void CDataDir::Parse(const Byte *p)
 {
-  UInt32 Va;
-  UInt32 Size;
-
-  void Parse(const Byte *p)
-  {
-    G32(0, Va);
-    G32(4, Size);
-  }
-};
+  G32(0, Va);
+  G32(4, Size);
+}
 
 static const UInt32 kHeaderSize = 40;
 
@@ -2889,29 +2653,6 @@ static bool FindValue(const CUInt32PCharPair *pairs, unsigned num, UInt32 value)
 #define MY_FIND_VALUE_2(strings, val) (val < ARRAY_SIZE(strings) && strings[val])
  
 static const UInt32 kNumSection_MAX = 32;
-
-struct CHeader
-{
-  UInt16 Machine;
-  Byte NumSections;
-  Byte SubSystem;
-  UInt16 StrippedSize;
-  /*
-  UInt32 AddressOfEntryPoint;
-  UInt32 BaseOfCode;
-  UInt64 ImageBase;
-  */
-  CDataDir DataDir[2]; // base relocation and debug directory
-
-  bool ConvertPa(UInt32 &pa) const
-  {
-    if (pa < StrippedSize)
-      return false;
-    pa = pa - StrippedSize + kHeaderSize;
-    return true;
-  }
-  bool Parse(const Byte *p);
-};
 
 bool CHeader::Parse(const Byte *p)
 {
@@ -2954,64 +2695,40 @@ API_FUNC_static_IsArc IsArc_Te(const Byte *p, size_t size)
 }
 }
 
-
-struct CSection
+bool CHeader::ConvertPa(UInt32 &pa) const
 {
-  Byte Name[NPe::kNameSize];
+  if (pa < StrippedSize)
+    return false;
+  pa = pa - StrippedSize + kHeaderSize;
+  return true;
+}
 
-  UInt32 VSize;
-  UInt32 Va;
-  UInt32 PSize;
-  UInt32 Pa;
-  UInt32 Flags;
-  // UInt16 NumRelocs;
-
-  void Parse(const Byte *p)
-  {
-    memcpy(Name, p, NPe::kNameSize);
-    G32(8, VSize);
-    G32(12, Va);
-    G32(16, PSize);
-    G32(20, Pa);
-    // G32(p + 32, NumRelocs);
-    G32(36, Flags);
-  }
-
-  bool Check() const
-  {
-    return
-        Pa <= ((UInt32)1 << 30) &&
-        PSize <= ((UInt32)1 << 30);
-  }
-
-  void UpdateTotalSize(UInt32 &totalSize)
-  {
-    UInt32 t = Pa + PSize;
-    if (t > totalSize)
-      totalSize = t;
-  }
-};
-
-class CHandler:
-  public IInArchive,
-  public IInArchiveGetStream,
-  public IArchiveAllowTail,
-  public CMyUnknownImp
+void CSection::Parse(const Byte *p)
 {
-  CRecordVector<CSection> _items;
-  CMyComPtr<IInStream> _stream;
-  UInt32 _totalSize;
-  bool _allowTail;
-  CHeader _h;
-  
-  HRESULT Open2(IInStream *stream);
-public:
-  MY_UNKNOWN_IMP3(IInArchive, IInArchiveGetStream, IArchiveAllowTail)
-  INTERFACE_IInArchive(;)
-  STDMETHOD(GetStream)(UInt32 index, ISequentialInStream **stream);
-  STDMETHOD(AllowTail)(Int32 allowTail);
-  CHandler(): _allowTail(false) {}
-};
+  memcpy(Name, p, NPe::kNameSize);
+  G32(8, VSize);
+  G32(12, Va);
+  G32(16, PSize);
+  G32(20, Pa);
+  // G32(p + 32, NumRelocs);
+  G32(36, Flags);
+}
+
+bool CSection::Check() const
+{
+  return
+      Pa <= ((UInt32)1 << 30) &&
+      PSize <= ((UInt32)1 << 30);
+}
+
+void CSection::UpdateTotalSize(UInt32 &totalSize)
+{
+  UInt32 t = Pa + PSize;
+  if (t > totalSize)
+    totalSize = t;
+}
+
+CHandler::CHandler(): _allowTail(false) {}
 
 static const Byte kProps[] =
 {
@@ -3235,12 +2952,32 @@ STDMETHODIMP CHandler::AllowTail(Int32 allowTail)
 
 static const Byte k_Signature[] = { 'V', 'Z' };
 
-REGISTER_ARC_I(
-  "TE", "te", 0, 0xCF,
-  k_Signature,
-  0,
+static IInArchive * CreateArc() {
+  return new CHandler();
+}
+
+static const CArcInfo s_arcInfo = {
   NArcInfoFlags::kPreArc,
-  IsArc_Te)
+  0xCF,
+  sizeof(k_Signature) / sizeof(k_Signature[0]),
+  0,
+  k_Signature,
+  "TE",
+  "te",
+  0,
+  CreateArc,
+  0,
+  IsArc_Te
+};
+
+void CHandler::Register() {
+  static bool s_registered = false;
+
+  if(!s_registered) {
+    RegisterArc(&s_arcInfo);
+    s_registered = true;
+  }
+}
 
 }
 }

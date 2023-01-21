@@ -16,6 +16,8 @@
 #include "../Common/StreamUtils.h"
 #include "../Common/InBuffer.h"
 
+#include "Base64Handler.h"
+
 /*
 spaces:
   9(TAB),10(LF),13(CR),32(SPACE)
@@ -116,16 +118,6 @@ API_FUNC_static_IsArc IsArc_Base64(const Byte *p, size_t size)
   }
 }
 }
-
-
-enum EBase64Res
-{
-  k_Base64_RES_MaybeFinished,
-  k_Base64_RES_Finished,
-  k_Base64_RES_NeedMoreInput,
-  k_Base64_RES_UnexpectedChar
-};
-
 
 static EBase64Res Base64ToBin(Byte *p, size_t size, const Byte **srcEnd, Byte **destEnd)
 {
@@ -278,20 +270,6 @@ Byte *Base64ToBin(Byte *dest, const char *src)
 
 namespace NArchive {
 namespace NBase64 {
-
-class CHandler:
-  public IInArchive,
-  public CMyUnknownImp
-{
-  bool _isArc;
-  UInt64 _phySize;
-  size_t _size;
-  EBase64Res _sres;
-  CByteBuffer _data;
-public:
-  MY_UNKNOWN_IMP1(IInArchive)
-  INTERFACE_IInArchive(;)
-};
 
 static const Byte kProps[] =
 {
@@ -502,10 +480,32 @@ STDMETHODIMP CHandler::Extract(const UInt32 *indices, UInt32 numItems,
   COM_TRY_END
 }
 
-REGISTER_ARC_I_NO_SIG(
-  "Base64", "b64", 0, 0xC5,
-  0,
+static IInArchive * CreateArc() {
+  return new CHandler();
+}
+
+static const CArcInfo s_arcInfo = {
   NArcInfoFlags::kKeepName | NArcInfoFlags::kStartOpen | NArcInfoFlags::kByExtOnlyOpen,
-  IsArc_Base64)
+  0xC5,
+  0,
+  0,
+  0,
+  "Base64",
+  "b64",
+  0,
+  CreateArc,
+  0,
+  IsArc_Base64
+};
+
+void CHandler::Register() {
+  static bool s_registered = false;
+
+  if(!s_registered) {
+    RegisterArc(&s_arcInfo);
+
+    s_registered = true;
+  }
+}
 
 }}

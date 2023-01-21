@@ -58,6 +58,8 @@ private:
   HRESULT SkipTo(UInt32 index);
   void TarStringToUnicode(const AString &s, NWindows::NCOM::CPropVariant &prop, bool toOs = false) const;
 public:
+  static void Register();
+
   MY_UNKNOWN_IMP5(
     IInArchive,
     IArchiveOpenSeq,

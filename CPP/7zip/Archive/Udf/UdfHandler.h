@@ -28,11 +28,25 @@ class CHandler:
   CInArchive _archive;
   CRecordVector<CRef2> _refs2;
 public:
+  static void Register();
+
   MY_UNKNOWN_IMP2(IInArchive, IInArchiveGetStream)
   INTERFACE_IInArchive(;)
   STDMETHOD(GetStream)(UInt32 index, ISequentialInStream **stream);
 };
 
+class CProgressImp: public CProgressVirt
+{
+  CMyComPtr<IArchiveOpenCallback> _callback;
+  UInt64 _numFiles;
+  UInt64 _numBytes;
+public:
+  HRESULT SetTotal(UInt64 numBytes);
+  HRESULT SetCompleted(UInt64 numFiles, UInt64 numBytes);
+  HRESULT SetCompleted();
+  CProgressImp(IArchiveOpenCallback *callback);
+};
+
 }}
 
-#endif
+#endif // __UDF_HANDLER_H

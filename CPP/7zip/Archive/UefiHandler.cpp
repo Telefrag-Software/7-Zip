@@ -28,11 +28,7 @@
 #include "../Compress/CopyCoder.h"
 #include "../Compress/LzhDecoder.h"
 
-#ifdef SHOW_DEBUG_INFO
-#define PRF(x) x
-#else
-#define PRF(x)
-#endif
+#include "UefiHandler.h"
 
 #define Get16(p) GetUi16(p)
 #define Get32(p) GetUi32(p)
@@ -58,8 +54,6 @@ static bool IsIntelMe(const Byte *p)
 }
 
 static const unsigned kFvHeaderSize = 0x38;
-
-static const unsigned kGuidSize = 16;
 
 #define CAPSULE_SIGNATURE   0xBD,0x86,0x66,0x3B,0x76,0x0D,0x30,0x40,0xB7,0x0E,0xB5,0x51,0x9E,0x2F,0xC5,0xA0
 #define CAPSULE2_SIGNATURE  0x8B,0xA6,0x3C,0x4A,0x23,0x77,0xFB,0x48,0x80,0x3D,0x57,0x8C,0xC1,0xFE,0xC4,0x4D
@@ -141,13 +135,6 @@ static const char * const kGuidNames[] =
 enum
 {
   kGuidIndex_CRC = 0
-};
-
-struct CSigExtPair
-{
-  const char *ext;
-  unsigned sigSize;
-  Byte sig[16];
 };
 
 static const CSigExtPair g_Sigs[] =
@@ -452,202 +439,150 @@ static void AddSpaceAndString(AString &res, const AString &newString)
   }
 }
 
-class CFfsFileHeader
+UInt16 CFfsFileHeader::GetTailReference() const { return (UInt16)(CheckHeader | ((UInt16)CheckFile << 8)); }
+UInt32 CFfsFileHeader::GetTailSize() const { return IsThereTail() ? 2 : 0; }
+bool CFfsFileHeader::IsThereFileChecksum() const { return (Attrib & FFS_ATTRIB_CHECKSUM) != 0; }
+bool CFfsFileHeader::IsThereTail() const { return (Attrib & FFS_ATTRIB_TAIL_PRESENT) != 0; }
+
+bool CFfsFileHeader::Parse(const Byte *p)
 {
-PRF(public:)
-  Byte CheckHeader;
-  Byte CheckFile;
-  Byte Attrib;
-  Byte State;
+  unsigned i;
+  for (i = 0; i < kFileHeaderSize; i++)
+    if (p[i] != 0xFF)
+      break;
+  if (i == kFileHeaderSize)
+    return false;
+  memcpy(GuidName, p, kGuidSize);
+  CheckHeader = p[0x10];
+  CheckFile = p[0x11];
+  Type = p[0x12];
+  Attrib = p[0x13];
+  Size = Get24(p + 0x14);
+  State = p[0x17];
+  return true;
+}
 
-  UInt16 GetTailReference() const { return (UInt16)(CheckHeader | ((UInt16)CheckFile << 8)); }
-  UInt32 GetTailSize() const { return IsThereTail() ? 2 : 0; }
-  bool IsThereFileChecksum() const { return (Attrib & FFS_ATTRIB_CHECKSUM) != 0; }
-  bool IsThereTail() const { return (Attrib & FFS_ATTRIB_TAIL_PRESENT) != 0; }
-public:
-  Byte GuidName[kGuidSize];
-  Byte Type;
-  UInt32 Size;
+UInt32 CFfsFileHeader::GetDataSize() const { return Size - kFileHeaderSize - GetTailSize(); }
+UInt32 CFfsFileHeader::GetDataSize2(UInt32 rem) const { return rem - kFileHeaderSize - GetTailSize(); }
+
+bool CFfsFileHeader::Check(const Byte *p, UInt32 size)
+{
+  if (Size > size)
+    return false;
+  UInt32 tailSize = GetTailSize();
+  if (Size < kFileHeaderSize + tailSize)
+    return false;
   
-  bool Parse(const Byte *p)
   {
-    unsigned i;
-    for (i = 0; i < kFileHeaderSize; i++)
-      if (p[i] != 0xFF)
-        break;
-    if (i == kFileHeaderSize)
+    unsigned checkSum = 0;
+    for (UInt32 i = 0; i < kFileHeaderSize; i++)
+      checkSum += p[i];
+    checkSum -= p[0x17];
+    checkSum -= p[0x11];
+    if ((Byte)checkSum != 0)
       return false;
-    memcpy(GuidName, p, kGuidSize);
-    CheckHeader = p[0x10];
-    CheckFile = p[0x11];
-    Type = p[0x12];
-    Attrib = p[0x13];
-    Size = Get24(p + 0x14);
-    State = p[0x17];
-    return true;
   }
-
-  UInt32 GetDataSize() const { return Size - kFileHeaderSize - GetTailSize(); }
-  UInt32 GetDataSize2(UInt32 rem) const { return rem - kFileHeaderSize - GetTailSize(); }
-
-  bool Check(const Byte *p, UInt32 size)
+  
+  if (IsThereFileChecksum())
   {
-    if (Size > size)
+    unsigned checkSum = 0;
+    UInt32 checkSize = Size - tailSize;
+    for (UInt32 i = 0; i < checkSize; i++)
+      checkSum += p[i];
+    checkSum -= p[0x17];
+    if ((Byte)checkSum != 0)
       return false;
-    UInt32 tailSize = GetTailSize();
-    if (Size < kFileHeaderSize + tailSize)
-      return false;
-    
-    {
-      unsigned checkSum = 0;
-      for (UInt32 i = 0; i < kFileHeaderSize; i++)
-        checkSum += p[i];
-      checkSum -= p[0x17];
-      checkSum -= p[0x11];
-      if ((Byte)checkSum != 0)
-        return false;
-    }
-    
-    if (IsThereFileChecksum())
-    {
-      unsigned checkSum = 0;
-      UInt32 checkSize = Size - tailSize;
-      for (UInt32 i = 0; i < checkSize; i++)
-        checkSum += p[i];
-      checkSum -= p[0x17];
-      if ((Byte)checkSum != 0)
-        return false;
-    }
-    
-    if (IsThereTail())
-      if (GetTailReference() != (UInt16)~Get16(p + Size - 2))
-        return false;
-
-    int polarity = 0;
-    int i;
-    for (i = 5; i >= 0; i--)
-      if (((State >> i) & 1) == polarity)
-      {
-        // AddSpaceAndString(s, g_FFS_FILE_STATE_Flags[i]);
-        if ((1 << i) != FILE_DATA_VALID)
-          return false;
-        break;
-      }
-    if (i < 0)
-      return false;
-
-    return true;
   }
+  
+  if (IsThereTail())
+    if (GetTailReference() != (UInt16)~Get16(p + Size - 2))
+      return false;
 
-  AString GetCharacts() const
+  int polarity = 0;
+  int i;
+  for (i = 5; i >= 0; i--)
+    if (((State >> i) & 1) == polarity)
+    {
+      // AddSpaceAndString(s, g_FFS_FILE_STATE_Flags[i]);
+      if ((1 << i) != FILE_DATA_VALID)
+        return false;
+      break;
+    }
+  if (i < 0)
+    return false;
+
+  return true;
+}
+
+AString CFfsFileHeader::GetCharacts() const
+{
+  AString s;
+  if (Type == FV_FILETYPE_FFS_PAD)
+    s += "PAD";
+  else
+    s += TYPE_TO_STRING(g_FileTypes, Type);
+  AddSpaceAndString(s, FLAGS_TO_STRING(g_FFS_FILE_ATTRIBUTES, Attrib & 0xC7));
+  /*
+  int align = (Attrib >> 3) & 7;
+  if (align != 0)
   {
-    AString s;
-    if (Type == FV_FILETYPE_FFS_PAD)
-      s += "PAD";
-    else
-      s += TYPE_TO_STRING(g_FileTypes, Type);
-    AddSpaceAndString(s, FLAGS_TO_STRING(g_FFS_FILE_ATTRIBUTES, Attrib & 0xC7));
-    /*
-    int align = (Attrib >> 3) & 7;
-    if (align != 0)
-    {
-      s += " Align:";
-      s.Add_UInt32((UInt32)1 << g_Allignment[align]);
-    }
-    */
-    return s;
+    s += " Align:";
+    s.Add_UInt32((UInt32)1 << g_Allignment[align]);
   }
-};
+  */
+  return s;
+}
 
 #define G32(_offs_, dest) dest = Get32(p + (_offs_));
 #define G16(_offs_, dest) dest = Get16(p + (_offs_));
 
-struct CCapsuleHeader
+void CCapsuleHeader::Clear() { memset(this, 0, sizeof(*this)); }
+
+bool CCapsuleHeader::Parse(const Byte *p)
 {
-  UInt32 HeaderSize;
-  UInt32 Flags;
-  UInt32 CapsuleImageSize;
-  UInt32 SequenceNumber;
-  // Guid InstanceId;
-  UInt32 OffsetToSplitInformation;
-  UInt32 OffsetToCapsuleBody;
-  UInt32 OffsetToOemDefinedHeader;
-  UInt32 OffsetToAuthorInformation;
-  UInt32 OffsetToRevisionInformation;
-  UInt32 OffsetToShortDescription;
-  UInt32 OffsetToLongDescription;
-  UInt32 OffsetToApplicableDevices;
-
-  void Clear() { memset(this, 0, sizeof(*this)); }
-
-  bool Parse(const Byte *p)
+  Clear();
+  G32(0x10, HeaderSize);
+  G32(0x14, Flags);
+  G32(0x18, CapsuleImageSize);
+  if (HeaderSize < 0x1C)
+    return false;
+  if (AreGuidsEq(p, k_Guids_Capsules[0]))
   {
-    Clear();
-    G32(0x10, HeaderSize);
-    G32(0x14, Flags);
-    G32(0x18, CapsuleImageSize);
-    if (HeaderSize < 0x1C)
+    const unsigned kHeaderSize = 80;
+    if (HeaderSize != kHeaderSize)
       return false;
-    if (AreGuidsEq(p, k_Guids_Capsules[0]))
-    {
-      const unsigned kHeaderSize = 80;
-      if (HeaderSize != kHeaderSize)
-        return false;
-      G32(0x1C, SequenceNumber);
-      G32(0x30, OffsetToSplitInformation);
-      G32(0x34, OffsetToCapsuleBody);
-      G32(0x38, OffsetToOemDefinedHeader);
-      G32(0x3C, OffsetToAuthorInformation);
-      G32(0x40, OffsetToRevisionInformation);
-      G32(0x44, OffsetToShortDescription);
-      G32(0x48, OffsetToLongDescription);
-      G32(0x4C, OffsetToApplicableDevices);
-      return true;
-    }
-    else if (AreGuidsEq(p, k_Guids_Capsules[1]))
-    {
-      // capsule v2
-      G16(0x1C, OffsetToCapsuleBody);
-      G16(0x1E, OffsetToOemDefinedHeader);
-      return true;
-    }
-    else if (AreGuidsEq(p, k_Guids_Capsules[2]))
-    {
-      OffsetToCapsuleBody = HeaderSize;
-      return true;
-    }
-    else
-    {
-      // here we must check for another capsule types
-      return false;
-    }
+    G32(0x1C, SequenceNumber);
+    G32(0x30, OffsetToSplitInformation);
+    G32(0x34, OffsetToCapsuleBody);
+    G32(0x38, OffsetToOemDefinedHeader);
+    G32(0x3C, OffsetToAuthorInformation);
+    G32(0x40, OffsetToRevisionInformation);
+    G32(0x44, OffsetToShortDescription);
+    G32(0x48, OffsetToLongDescription);
+    G32(0x4C, OffsetToApplicableDevices);
+    return true;
   }
-};
+  else if (AreGuidsEq(p, k_Guids_Capsules[1]))
+  {
+    // capsule v2
+    G16(0x1C, OffsetToCapsuleBody);
+    G16(0x1E, OffsetToOemDefinedHeader);
+    return true;
+  }
+  else if (AreGuidsEq(p, k_Guids_Capsules[2]))
+  {
+    OffsetToCapsuleBody = HeaderSize;
+    return true;
+  }
+  else
+  {
+    // here we must check for another capsule types
+    return false;
+  }
+}
 
-
-struct CItem
-{
-  AString Name;
-  AString Characts;
-  int Parent;
-  int Method;
-  int NameIndex;
-  int NumChilds;
-  bool IsDir;
-  bool Skip;
-  bool ThereAreSubDirs;
-  bool ThereIsUniqueName;
-  bool KeepName;
-
-  int BufIndex;
-  UInt32 Offset;
-  UInt32 Size;
-
-  CItem(): Parent(-1), Method(-1), NameIndex(-1), NumChilds(0),
-      IsDir(false), Skip(false), ThereAreSubDirs(false), ThereIsUniqueName(false), KeepName(true) {}
-  void SetGuid(const Byte *guidName, bool full = false);
-  AString GetName(int numChildsInParent) const;
-};
+CItem::CItem(): Parent(-1), Method(-1), NameIndex(-1), NumChilds(0),
+    IsDir(false), Skip(false), ThereAreSubDirs(false), ThereIsUniqueName(false), KeepName(true) {}
 
 void CItem::SetGuid(const Byte *guidName, bool full)
 {
@@ -680,60 +615,9 @@ AString CItem::GetName(int numChildsInParent) const
   return res;
 }
 
-struct CItem2
-{
-  AString Name;
-  AString Characts;
-  int MainIndex;
-  int Parent;
+CItem2::CItem2(): Parent(-1) {}
 
-  CItem2(): Parent(-1) {}
-};
-
-class CHandler:
-  public IInArchive,
-  public IInArchiveGetStream,
-  public CMyUnknownImp
-{
-  CObjectVector<CItem> _items;
-  CObjectVector<CItem2> _items2;
-  CObjectVector<CByteBuffer> _bufs;
-  UString _comment;
-  UInt32 _methodsMask;
-  bool _capsuleMode;
-  bool _headersError;
-
-  size_t _totalBufsSize;
-  CCapsuleHeader _h;
-  UInt64 _phySize;
-
-  void AddCommentString(const char *name, UInt32 pos);
-  int AddItem(const CItem &item);
-  int AddFileItemWithIndex(CItem &item);
-  int AddDirItem(CItem &item);
-  unsigned AddBuf(size_t size);
-
-  HRESULT DecodeLzma(const Byte *data, size_t inputSize);
-
-  HRESULT ParseSections(int bufIndex, UInt32 pos, UInt32 size, int parent, int method, unsigned level, bool &error);
-  
-  HRESULT ParseIntelMe(int bufIndex, UInt32 posBase,
-      UInt32 exactSize, UInt32 limitSize,
-      int parent, int method, unsigned level);
-
-  HRESULT ParseVolume(int bufIndex, UInt32 posBase,
-      UInt32 exactSize, UInt32 limitSize,
-      int parent, int method, unsigned level);
-
-  HRESULT OpenCapsule(IInStream *stream);
-  HRESULT OpenFv(IInStream *stream, const UInt64 *maxCheckStartPosition, IArchiveOpenCallback *callback);
-  HRESULT Open2(IInStream *stream, const UInt64 *maxCheckStartPosition, IArchiveOpenCallback *callback);
-public:
-  CHandler(bool capsuleMode): _capsuleMode(capsuleMode) {}
-  MY_UNKNOWN_IMP2(IInArchive, IInArchiveGetStream)
-  INTERFACE_IInArchive(;)
-  STDMETHOD(GetStream)(UInt32 index, ISequentialInStream **stream);
-};
+CHandler::CHandler(bool capsuleMode): _capsuleMode(capsuleMode) {}
 
 static const Byte kProps[] =
 {
@@ -1284,14 +1168,6 @@ static bool Is_FF_Stream(const Byte *p, UInt32 size)
 {
   return (Count_FF_Bytes(p, size) == size);
 }
-
-struct CVolFfsHeader
-{
-  UInt32 HeaderLen;
-  UInt64 VolSize;
-  
-  bool Parse(const Byte *p);
-};
 
 bool CVolFfsHeader::Parse(const Byte *p)
 {
@@ -1850,7 +1726,7 @@ STDMETHODIMP CHandler::GetStream(UInt32 index, ISequentialInStream **stream)
 
 
 namespace UEFIc {
-  
+
 static const Byte k_Capsule_Signatures[] =
 {
    16, CAPSULE_SIGNATURE,
@@ -1858,19 +1734,28 @@ static const Byte k_Capsule_Signatures[] =
    16, CAPSULE_UEFI_SIGNATURE
 };
 
-REGISTER_ARC_I_CLS(
-  CHandler(true),
-  "UEFIc", "scap", 0, 0xD0,
-  k_Capsule_Signatures,
+static IInArchive * CreateArc() {
+  return new CHandler(true);
+}
+
+static const CArcInfo s_arcInfo = {
+  NArcInfoFlags::kMultiSignature | NArcInfoFlags::kFindSignature,
+  0xD0,
+  sizeof(k_Capsule_Signatures) / sizeof(k_Capsule_Signatures[0]),
   0,
-  NArcInfoFlags::kMultiSignature |
-  NArcInfoFlags::kFindSignature,
-  NULL)
-  
+  k_Capsule_Signatures,
+  "UEFIc",
+  "scap",
+  0,
+  CreateArc,
+  0,
+  0
+};
+
 }
 
 namespace UEFIf {
-  
+
 static const Byte k_FFS_Signatures[] =
 {
    16, FFS1_SIGNATURE,
@@ -1878,15 +1763,34 @@ static const Byte k_FFS_Signatures[] =
 };
 
 
-REGISTER_ARC_I_CLS(
-  CHandler(false),
-  "UEFIf", "uefif", 0, 0xD1,
-  k_FFS_Signatures,
-  kFfsGuidOffset,
-  NArcInfoFlags::kMultiSignature |
-  NArcInfoFlags::kFindSignature,
-  NULL)
+static IInArchive * CreateArc() {
+  return new CHandler(false);
+}
 
+static const CArcInfo s_arcInfo = {
+  NArcInfoFlags::kMultiSignature | NArcInfoFlags::kFindSignature,
+  0xD1,
+  sizeof(k_FFS_Signatures) / sizeof(k_FFS_Signatures[0]),
+  kFfsGuidOffset,
+  k_FFS_Signatures,
+  "UEFIf",
+  "uefif",
+  0,
+  CreateArc,
+  0,
+  0
+};
+
+}
+
+void CHandler::Register() {
+  static bool s_registered = false;
+
+  if(!s_registered) {
+    RegisterArc(&UEFIc::s_arcInfo);
+    RegisterArc(&UEFIf::s_arcInfo);
+    s_registered = true;
+  }
 }
 
 }}

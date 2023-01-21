@@ -2,6 +2,17 @@
 
 #include "StdAfx.h"
 
-#include "../../C/Sha256.h"
+#include "Sha256Hasher.h"
 
-static struct CSha256Prepare { CSha256Prepare() { Sha256Prepare(); } } g_Sha256Prepare;
+namespace NHash {
+
+void CSha256Hasher::Prepare() {
+  static bool s_prepared = false;
+
+  if(!s_prepared) {
+    Sha256Prepare();
+    s_prepared = true;
+  }
+}
+
+}

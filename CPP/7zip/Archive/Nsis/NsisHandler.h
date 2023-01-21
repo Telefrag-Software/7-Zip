@@ -26,6 +26,8 @@ class CHandler:
 
   // AString GetMethod(NMethodType::EEnum method, bool useItemFilter, UInt32 dictionary) const;
 public:
+  static void Register();
+
   MY_UNKNOWN_IMP1(IInArchive)
 
   INTERFACE_IInArchive(;)

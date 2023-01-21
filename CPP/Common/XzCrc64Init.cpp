@@ -2,6 +2,17 @@
 
 #include "StdAfx.h"
 
-#include "../../C/XzCrc64.h"
+#include "XzCrc64Hasher.h"
 
-static struct CCrc64Gen { CCrc64Gen() { Crc64GenerateTable(); } } g_Crc64TableInit;
+namespace NHash {
+
+void CXzCrc64Hasher::Initialize() {
+  static bool s_initialized = false;
+
+  if(!s_initialized) {
+    Crc64GenerateTable();
+    s_initialized = true;
+  }
+}
+
+}

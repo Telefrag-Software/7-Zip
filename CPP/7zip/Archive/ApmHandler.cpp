@@ -12,7 +12,7 @@
 #include "../Common/RegisterArc.h"
 #include "../Common/StreamUtils.h"
 
-#include "HandlerCont.h"
+#include "ApmHandler.h"
 
 #define Get16(p) GetBe16(p)
 #define Get32(p) GetBe32(p)
@@ -24,77 +24,33 @@ namespace NApm {
 
 static const Byte kSig0 = 'E';
 static const Byte kSig1 = 'R';
-
-struct CItem
-{
-  UInt32 StartBlock;
-  UInt32 NumBlocks;
-  char Name[32];
-  char Type[32];
-  /*
-  UInt32 DataStartBlock;
-  UInt32 NumDataBlocks;
-  UInt32 Status;
-  UInt32 BootStartBlock;
-  UInt32 BootSize;
-  UInt32 BootAddr;
-  UInt32 BootEntry;
-  UInt32 BootChecksum;
-  char Processor[16];
-  */
-
-  bool Parse(const Byte *p, UInt32 &numBlocksInMap)
-  {
-    numBlocksInMap = Get32(p + 4);
-    StartBlock = Get32(p + 8);
-    NumBlocks = Get32(p + 0xC);
-    memcpy(Name, p + 0x10, 32);
-    memcpy(Type, p + 0x30, 32);
-    if (p[0] != 0x50 || p[1] != 0x4D || p[2] != 0 || p[3] != 0)
-      return false;
-    /*
-    DataStartBlock = Get32(p + 0x50);
-    NumDataBlocks = Get32(p + 0x54);
-    Status = Get32(p + 0x58);
-    BootStartBlock = Get32(p + 0x5C);
-    BootSize = Get32(p + 0x60);
-    BootAddr = Get32(p + 0x64);
-    if (Get32(p + 0x68) != 0)
-      return false;
-    BootEntry = Get32(p + 0x6C);
-    if (Get32(p + 0x70) != 0)
-      return false;
-    BootChecksum = Get32(p + 0x74);
-    memcpy(Processor, p + 0x78, 16);
-    */
-    return true;
-  }
-};
-
-class CHandler: public CHandlerCont
-{
-  CRecordVector<CItem> _items;
-  unsigned _blockSizeLog;
-  UInt32 _numBlocks;
-  UInt64 _phySize;
-  bool _isArc;
-
-  HRESULT ReadTables(IInStream *stream);
-  UInt64 BlocksToBytes(UInt32 i) const { return (UInt64)i << _blockSizeLog; }
-
-  virtual int GetItem_ExtractInfo(UInt32 index, UInt64 &pos, UInt64 &size) const
-  {
-    const CItem &item = _items[index];
-    pos = BlocksToBytes(item.StartBlock);
-    size = BlocksToBytes(item.NumBlocks);
-    return NExtract::NOperationResult::kOK;
-  }
-
-public:
-  INTERFACE_IInArchive_Cont(;)
-};
-
 static const UInt32 kSectorSize = 512;
+
+bool CItem::Parse(const Byte *p, UInt32 &numBlocksInMap) {
+  numBlocksInMap = Get32(p + 4);
+  StartBlock = Get32(p + 8);
+  NumBlocks = Get32(p + 0xC);
+  memcpy(Name, p + 0x10, 32);
+  memcpy(Type, p + 0x30, 32);
+  if (p[0] != 0x50 || p[1] != 0x4D || p[2] != 0 || p[3] != 0)
+    return false;
+  /*
+  DataStartBlock = Get32(p + 0x50);
+  NumDataBlocks = Get32(p + 0x54);
+  Status = Get32(p + 0x58);
+  BootStartBlock = Get32(p + 0x5C);
+  BootSize = Get32(p + 0x60);
+  BootAddr = Get32(p + 0x64);
+  if (Get32(p + 0x68) != 0)
+    return false;
+  BootEntry = Get32(p + 0x6C);
+  if (Get32(p + 0x70) != 0)
+    return false;
+  BootChecksum = Get32(p + 0x74);
+  memcpy(Processor, p + 0x78, 16);
+  */
+  return true;
+}
 
 API_FUNC_static_IsArc IsArc_Apm(const Byte *p, size_t size)
 {
@@ -176,6 +132,16 @@ HRESULT CHandler::ReadTables(IInStream *stream)
   _phySize = BlocksToBytes(_numBlocks);
   _isArc = true;
   return S_OK;
+}
+
+UInt64 CHandler::BlocksToBytes(UInt32 i) const { return (UInt64)i << _blockSizeLog; }
+
+int CHandler::GetItem_ExtractInfo(UInt32 index, UInt64 &pos, UInt64 &size) const
+{
+  const CItem &item = _items[index];
+  pos = BlocksToBytes(item.StartBlock);
+  size = BlocksToBytes(item.NumBlocks);
+  return NExtract::NOperationResult::kOK;
 }
 
 STDMETHODIMP CHandler::Open(IInStream *stream, const UInt64 *, IArchiveOpenCallback * /* callback */)
@@ -305,11 +271,32 @@ STDMETHODIMP CHandler::GetProperty(UInt32 index, PROPID propID, PROPVARIANT *val
 
 static const Byte k_Signature[] = { kSig0, kSig1 };
 
-REGISTER_ARC_I(
-  "APM", "apm", 0, 0xD4,
+static IInArchive * CreateArc() {
+  return new CHandler();
+}
+
+static const CArcInfo s_arcInfo = {
+  0,
+  0xD4,
+  sizeof(k_Signature) / sizeof(k_Signature[0]),
+  0,
   k_Signature,
+  "APM",
+  "apm",
   0,
+  CreateArc,
   0,
-  IsArc_Apm)
+  IsArc_Apm
+};
+
+void CHandler::Register() {
+  static bool s_registered = false;
+
+  if(!s_registered) {
+    RegisterArc(&s_arcInfo);
+
+    s_registered = true;
+  }
+}
 
 }}

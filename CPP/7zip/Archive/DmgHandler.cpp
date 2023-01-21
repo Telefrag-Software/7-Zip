@@ -24,6 +24,8 @@
 
 #include "Common/OutStreamWithCRC.h"
 
+#include "DmgHandler.h"
+
 // #define DMG_SHOW_RAW
 
 // #include <stdio.h>
@@ -39,65 +41,21 @@ namespace NArchive {
 namespace NDmg {
 
 
-static const UInt32  METHOD_ZERO_0  = 0;
-static const UInt32  METHOD_COPY    = 1;
-static const UInt32  METHOD_ZERO_2  = 2; // without file CRC calculation
-static const UInt32  METHOD_ADC     = 0x80000004;
-static const UInt32  METHOD_ZLIB    = 0x80000005;
-static const UInt32  METHOD_BZIP2   = 0x80000006;
-static const UInt32  METHOD_LZFSE   = 0x80000007;
-static const UInt32  METHOD_COMMENT = 0x7FFFFFFE; // is used to comment "+beg" and "+end" in extra field.
-static const UInt32  METHOD_END     = 0xFFFFFFFF;
+UInt64 CBlock::GetNextPackOffset() const { return PackPos + PackSize; }
+UInt64 CBlock::GetNextUnpPos() const { return UnpPos + UnpSize; }
 
+bool CBlock::IsZeroMethod() const { return Type == METHOD_ZERO_0 || Type == METHOD_ZERO_2; }
+bool CBlock::ThereAreDataInBlock() const { return Type != METHOD_COMMENT && Type != METHOD_END; }
 
-struct CBlock
-{
-  UInt32 Type;
-  UInt64 UnpPos;
-  UInt64 UnpSize;
-  UInt64 PackPos;
-  UInt64 PackSize;
-  
-  UInt64 GetNextPackOffset() const { return PackPos + PackSize; }
-  UInt64 GetNextUnpPos() const { return UnpPos + UnpSize; }
+bool CChecksum::IsCrc32() const { return Type == kCheckSumType_CRC && NumBits == 32; }
 
-  bool IsZeroMethod() const { return Type == METHOD_ZERO_0 || Type == METHOD_ZERO_2; }
-  bool ThereAreDataInBlock() const { return Type != METHOD_COMMENT && Type != METHOD_END; }
-};
-
-static const UInt32 kCheckSumType_CRC = 2;
-
-static const size_t kChecksumSize_Max = 0x80;
-
-struct CChecksum
-{
-  UInt32 Type;
-  UInt32 NumBits;
-  Byte Data[kChecksumSize_Max];
-
-  bool IsCrc32() const { return Type == kCheckSumType_CRC && NumBits == 32; }
-  UInt32 GetCrc32() const { return Get32(Data); }
-  void Parse(const Byte *p);
-};
+UInt32 CChecksum::GetCrc32() const { return Get32(Data); }
 
 void CChecksum::Parse(const Byte *p)
 {
   Type = Get32(p);
   NumBits = Get32(p + 4);
   memcpy(Data, p + 8, kChecksumSize_Max);
-};
-
-struct CFile
-{
-  UInt64 Size;
-  UInt64 PackSize;
-  UInt64 StartPos;
-  AString Name;
-  CRecordVector<CBlock> Blocks;
-  CChecksum Checksum;
-  bool FullFileChecksum;
-
-  HRESULT Parse(const Byte *p, UInt32 size);
 };
 
 #ifdef DMG_SHOW_RAW
@@ -108,59 +66,21 @@ struct CExtraFile
 };
 #endif
 
-
-struct CForkPair
+void CForkPair::Parse(const Byte *p)
 {
-  UInt64 Offset;
-  UInt64 Len;
-  
-  void Parse(const Byte *p)
-  {
-    Offset = Get64(p);
-    Len = Get64(p + 8);
-  }
+  Offset = Get64(p);
+  Len = Get64(p + 8);
+}
 
-  bool UpdateTop(UInt64 limit, UInt64 &top)
-  {
-    if (Offset > limit || Len > limit - Offset)
-      return false;
-    UInt64 top2 = Offset + Len;
-    if (top <= top2)
-      top = top2;
-    return true;
-  }
-};
-
-
-class CHandler:
-  public IInArchive,
-  public IInArchiveGetStream,
-  public CMyUnknownImp
+bool CForkPair::UpdateTop(UInt64 limit, UInt64 &top)
 {
-  CMyComPtr<IInStream> _inStream;
-  CObjectVector<CFile> _files;
-  bool _masterCrcError;
-  bool _headersError;
-
-  UInt32 _dataStartOffset;
-  UInt64 _startPos;
-  UInt64 _phySize;
-
-  AString _name;
-  
-  #ifdef DMG_SHOW_RAW
-  CObjectVector<CExtraFile> _extras;
-  #endif
-
-  HRESULT ReadData(IInStream *stream, const CForkPair &pair, CByteBuffer &buf);
-  bool ParseBlob(const CByteBuffer &data);
-  HRESULT Open2(IInStream *stream);
-  HRESULT Extract(IInStream *stream);
-public:
-  MY_UNKNOWN_IMP2(IInArchive, IInArchiveGetStream)
-  INTERFACE_IInArchive(;)
-  STDMETHOD(GetStream)(UInt32 index, ISequentialInStream **stream);
-};
+  if (Offset > limit || Len > limit - Offset)
+    return false;
+  UInt64 top2 = Offset + Len;
+  if (top <= top2)
+    top = top2;
+  return true;
+}
 
 // that limit can be increased, if there are such dmg files
 static const size_t kXmlSizeMax = 0xFFFF0000; // 4 GB - 64 KB;
@@ -222,32 +142,6 @@ void CMethods::GetString(AString &res) const
   }
 }
 
-struct CAppleName
-{
-  bool IsFs;
-  const char *Ext;
-  const char *AppleName;
-};
-
-static const CAppleName k_Names[] =
-{
-  { true,  "hfs",  "Apple_HFS" },
-  { true,  "hfsx", "Apple_HFSX" },
-  { true,  "ufs",  "Apple_UFS" },
-  { true,  "apfs", "Apple_APFS" },
-
-  // efi_sys partition is FAT32, but it's not main file. So we use (IsFs = false)
-  { false,  "efi_sys", "C12A7328-F81F-11D2-BA4B-00A0C93EC93B" },
-
-  { false, "free", "Apple_Free" },
-  { false, "ddm",  "DDM" },
-  { false, NULL,   "Apple_partition_map" },
-  { false, NULL,   " GPT " },
-  { false, NULL,   "MBR" },
-  { false, NULL,   "Driver" },
-  { false, NULL,   "Patches" }
-};
-  
 static const unsigned kNumAppleNames = ARRAY_SIZE(k_Names);
 
 static const Byte kProps[] =
@@ -1774,12 +1668,31 @@ STDMETHODIMP CHandler::GetStream(UInt32 index, ISequentialInStream **stream)
   COM_TRY_END
 }
 
-REGISTER_ARC_I(
-  "Dmg", "dmg", 0, 0xE4,
-  k_Signature,
+static IInArchive * CreateArc() {
+  return new CHandler();
+}
+
+static const CArcInfo s_arcInfo = {
+  NArcInfoFlags::kBackwardOpen | NArcInfoFlags::kUseGlobalOffset,
+  0xE4,
+  sizeof(k_Signature) / sizeof(k_Signature[0]),
   0,
-  NArcInfoFlags::kBackwardOpen |
-  NArcInfoFlags::kUseGlobalOffset,
-  NULL)
+  k_Signature,
+  "Dmg",
+  "dmg",
+  0,
+  CreateArc,
+  0,
+  0
+};
+
+void CHandler::Register() {
+  static bool s_registered = false;
+
+  if(!s_registered) {
+    RegisterArc(&s_arcInfo);
+    s_registered = true;
+  }
+}
 
 }}

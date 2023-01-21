@@ -20,6 +20,8 @@
 
 #include "HandlerCont.h"
 
+#include "QcowHandler.h"
+
 #define Get32(p) GetBe32(p)
 #define Get64(p) GetBe64(p)
 
@@ -38,60 +40,6 @@ VA to PA maps:
   mid bits  (L2) : _numMidBits  : in L2 Table : the reference to cluster
   low bits       : _clusterBits
 */
-
-class CHandler: public CHandlerImg
-{
-  unsigned _clusterBits;
-  unsigned _numMidBits;
-  UInt64 _compressedFlag;
-
-  CObjArray2<UInt32> _dir;
-  CAlignedBuffer _table;
-  UInt64 _cacheCluster;
-  CByteBuffer _cache;
-  CByteBuffer _cacheCompressed;
-
-  UInt64 _comprPos;
-  size_t _comprSize;
-
-  UInt64 _phySize;
-
-  CBufInStream *_bufInStreamSpec;
-  CMyComPtr<ISequentialInStream> _bufInStream;
-
-  CBufPtrSeqOutStream *_bufOutStreamSpec;
-  CMyComPtr<ISequentialOutStream> _bufOutStream;
-
-  NCompress::NDeflate::NDecoder::CCOMCoder *_deflateDecoderSpec;
-  CMyComPtr<ICompressCoder> _deflateDecoder;
-
-  bool _needDeflate;
-  bool _isArc;
-  bool _unsupported;
-
-  UInt32 _version;
-  UInt32 _cryptMethod;
-  
-  HRESULT Seek2(UInt64 offset)
-  {
-    _posInArc = offset;
-    return Stream->Seek(offset, STREAM_SEEK_SET, NULL);
-  }
-
-  HRESULT InitAndSeek()
-  {
-    _virtPos = 0;
-    return Seek2(0);
-  }
-
-  HRESULT Open2(IInStream *stream, IArchiveOpenCallback *openCallback);
-
-public:
-  INTERFACE_IInArchive_Img(;)
-
-  STDMETHOD(GetStream)(UInt32 index, ISequentialInStream **stream);
-  STDMETHOD(Read)(void *data, UInt32 size, UInt32 *processedSize);
-};
 
 
 static const UInt32 kEmptyDirItem = (UInt32)0 - 1;
@@ -356,6 +304,17 @@ STDMETHODIMP CHandler::GetProperty(UInt32 /* index */, PROPID propID, PROPVARIAN
   COM_TRY_END
 }
 
+HRESULT CHandler::Seek2(UInt64 offset)
+{
+  _posInArc = offset;
+  return Stream->Seek(offset, STREAM_SEEK_SET, NULL);
+}
+
+HRESULT CHandler::InitAndSeek()
+{
+  _virtPos = 0;
+  return Seek2(0);
+}
 
 HRESULT CHandler::Open2(IInStream *stream, IArchiveOpenCallback *openCallback)
 {
@@ -661,12 +620,31 @@ STDMETHODIMP CHandler::GetStream(UInt32 /* index */, ISequentialInStream **strea
   COM_TRY_END
 }
 
+static IInArchive * CreateArc() {
+  return new CHandler();
+}
 
-REGISTER_ARC_I(
-  "QCOW", "qcow qcow2 qcow2c", NULL, 0xCA,
+static const CArcInfo s_arcInfo = {
+  0,
+  0xCA,
+  sizeof(k_Signature) / sizeof(k_Signature[0]),
+  0,
   k_Signature,
+  "QCOW",
+  "qcow qcow2 qcow2c",
   0,
+  CreateArc,
   0,
-  NULL)
+  0
+};
+
+void CHandler::Register() {
+  static bool s_registered = false;
+
+  if(!s_registered) {
+    RegisterArc(&s_arcInfo);
+    s_registered = true;
+  }
+}
 
 }}

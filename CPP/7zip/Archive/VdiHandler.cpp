@@ -18,6 +18,8 @@
 
 #include "HandlerCont.h"
 
+#include "VdiHandler.h"
+
 #define Get32(p) GetUi32(p)
 #define Get64(p) GetUi64(p)
 
@@ -27,7 +29,7 @@ namespace NArchive {
 namespace NVdi {
 
 #define SIGNATURE { 0x7F, 0x10, 0xDA, 0xBE }
-  
+
 static const Byte k_Signature[] = SIGNATURE;
 
 static const unsigned k_ClusterBits = 20;
@@ -66,7 +68,6 @@ enum EGuidType
   k_GuidType_PModif
 };
 
-static const unsigned kNumGuids = 4;
 static const char * const kGuidNames[kNumGuids] =
 {
     "Creat "
@@ -83,40 +84,17 @@ static bool IsEmptyGuid(const Byte *data)
   return true;
 }
 
-
-
-class CHandler: public CHandlerImg
+HRESULT CHandler::Seek2(UInt64 offset)
 {
-  UInt32 _dataOffset;
-  CByteBuffer _table;
-  UInt64 _phySize;
-  UInt32 _imageType;
-  bool _isArc;
-  bool _unsupported;
+  _posInArc = offset;
+  return Stream->Seek(offset, STREAM_SEEK_SET, NULL);
+}
 
-  Byte Guids[kNumGuids][16];
-
-  HRESULT Seek2(UInt64 offset)
-  {
-    _posInArc = offset;
-    return Stream->Seek(offset, STREAM_SEEK_SET, NULL);
-  }
-
-  HRESULT InitAndSeek()
-  {
-    _virtPos = 0;
-    return Seek2(0);
-  }
-
-  HRESULT Open2(IInStream *stream, IArchiveOpenCallback *openCallback);
-
-public:
-  INTERFACE_IInArchive_Img(;)
-
-  STDMETHOD(GetStream)(UInt32 index, ISequentialInStream **stream);
-  STDMETHOD(Read)(void *data, UInt32 size, UInt32 *processedSize);
-};
-
+HRESULT CHandler::InitAndSeek()
+{
+  _virtPos = 0;
+  return Seek2(0);
+}
 
 STDMETHODIMP CHandler::Read(void *data, UInt32 size, UInt32 *processedSize)
 {
@@ -429,12 +407,31 @@ STDMETHODIMP CHandler::GetStream(UInt32 /* index */, ISequentialInStream **strea
   COM_TRY_END
 }
 
+static IInArchive * CreateArc() {
+  return new CHandler();
+}
 
-REGISTER_ARC_I(
-  "VDI", "vdi", NULL, 0xC9,
-  k_Signature,
-  0x40,
+static const CArcInfo s_arcInfo = {
   0,
-  NULL)
+  0xC9,
+  sizeof(k_Signature) / sizeof(k_Signature[0]),
+  0x40,
+  k_Signature,
+  "VDI",
+  "vdi",
+  0,
+  CreateArc,
+  0,
+  0
+};
+
+void CHandler::Register() {
+  static bool s_registered = false;
+
+  if(!s_registered) {
+    RegisterArc(&s_arcInfo);
+    s_registered = true;
+  }
+}
 
 }}

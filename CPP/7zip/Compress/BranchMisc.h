@@ -24,6 +24,8 @@ class CCoder:
   int _encode;
   Func_Bra BraFunc;
 public:
+  static void Register();
+
   MY_UNKNOWN_IMP1(ICompressFilter);
   INTERFACE_ICompressFilter(;)
 

@@ -2,41 +2,36 @@
 
 #include "StdAfx.h"
 
-#include "../../C/CpuArch.h"
-#include "../../C/XzCrc64.h"
-
-#include "../Common/MyCom.h"
-
 #include "../7zip/Common/RegisterCodec.h"
 
-class CXzCrc64Hasher:
-  public IHasher,
-  public CMyUnknownImp
-{
-  UInt64 _crc;
-  Byte mtDummy[1 << 7];
+#include "XzCrc64Hasher.h"
 
-public:
-  CXzCrc64Hasher(): _crc(CRC64_INIT_VAL) {}
+namespace NHash {
 
-  MY_UNKNOWN_IMP1(IHasher)
-  INTERFACE_IHasher(;)
+UInt32 __stdcall CXzCrc64Hasher::GetDigestSize() throw() {
+  return 8;
+}
+
+static IHasher * CreateHasherSpecXzCrc64() {
+  return new CXzCrc64Hasher();
+}
+
+static const CHasherInfo s_hasherInfo_XzCrc64 = {
+  CreateHasherSpecXzCrc64,
+  0x4,
+  "CRC64",
+  8
 };
 
-STDMETHODIMP_(void) CXzCrc64Hasher::Init() throw()
-{
-  _crc = CRC64_INIT_VAL;
+void CXzCrc64Hasher::Register() {
+  static bool s_registered;
+
+  Initialize();
+
+  if(!s_registered) {
+    RegisterHasher(&s_hasherInfo_XzCrc64);
+    s_registered = true;
+  }
 }
 
-STDMETHODIMP_(void) CXzCrc64Hasher::Update(const void *data, UInt32 size) throw()
-{
-  _crc = Crc64Update(_crc, data, size);
 }
-
-STDMETHODIMP_(void) CXzCrc64Hasher::Final(Byte *digest) throw()
-{
-  UInt64 val = CRC64_GET_DIGEST(_crc);
-  SetUi64(digest, val);
-}
-
-REGISTER_HASHER(CXzCrc64Hasher, 0x4, "CRC64", 8)

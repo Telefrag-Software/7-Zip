@@ -20,6 +20,8 @@ class CCopyCoder:
   Byte *_buf;
   CMyComPtr<ISequentialInStream> _inStream;
 public:
+  static void Register();
+
   UInt64 TotalSize;
   
   CCopyCoder(): _buf(0), TotalSize(0) {};

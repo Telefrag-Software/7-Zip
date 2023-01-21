@@ -222,6 +222,7 @@ protected:
   HRESULT ErrorResult; // for ISequentialInStream::Read mode only
 
 public:
+  static void Register();
 
   UInt32 _calcedBlockCrc;
   bool _blockFinished;

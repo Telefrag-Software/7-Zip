@@ -38,6 +38,8 @@ class CAesCoder:
   bool SetFunctions(UInt32 algo);
 
 public:
+  static void Register();
+
   CAesCoder(bool encodeMode, unsigned keySize, bool ctrMode);
   
   virtual ~CAesCoder() {};   // we need virtual destructor for derived classes

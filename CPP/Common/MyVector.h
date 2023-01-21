@@ -3,6 +3,8 @@
 #ifndef __COMMON_MY_VECTOR_H
 #define __COMMON_MY_VECTOR_H
 
+#include "Common.h"
+
 #include <string.h>
 
 template <class T>

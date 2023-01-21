@@ -103,6 +103,8 @@ class CHandler:
   #endif
 {
 public:
+  static void Register();
+
   MY_QUERYINTERFACE_BEGIN2(IInArchive)
   MY_QUERYINTERFACE_ENTRY(IArchiveGetRawProps)
   #ifdef __7Z_SET_PROPERTIES

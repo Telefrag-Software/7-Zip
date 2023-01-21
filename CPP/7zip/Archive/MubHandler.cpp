@@ -15,6 +15,8 @@
 
 #include "HandlerCont.h"
 
+#include "MubHandler.h"
+
 static UInt32 Get32(const Byte *p, bool be) { if (be) return GetBe32(p); return GetUi32(p); }
 
 using namespace NWindows;
@@ -37,38 +39,13 @@ namespace NMub {
 
 #define MACH_CPU_SUBTYPE_I386_ALL 3
 
-struct CItem
+int CHandler::GetItem_ExtractInfo(UInt32 index, UInt64 &pos, UInt64 &size) const
 {
-  UInt32 Type;
-  UInt32 SubType;
-  UInt32 Offset;
-  UInt32 Size;
-  // UInt32 Align;
-};
-
-static const UInt32 kNumFilesMax = 10;
-
-class CHandler: public CHandlerCont
-{
-  // UInt64 _startPos;
-  UInt64 _phySize;
-  UInt32 _numItems;
-  bool _bigEndian;
-  CItem _items[kNumFilesMax];
-
-  HRESULT Open2(IInStream *stream);
-
-  virtual int GetItem_ExtractInfo(UInt32 index, UInt64 &pos, UInt64 &size) const
-  {
-    const CItem &item = _items[index];
-    pos = item.Offset;
-    size = item.Size;
-    return NExtract::NOperationResult::kOK;
-  }
-
-public:
-  INTERFACE_IInArchive_Cont(;)
-};
+  const CItem &item = _items[index];
+  pos = item.Offset;
+  size = item.Size;
+  return NExtract::NOperationResult::kOK;
+}
 
 static const Byte kArcProps[] =
 {
@@ -235,13 +212,33 @@ static const Byte k_Signature[] = {
     7, 0xCA, 0xFE, 0xBA, 0xBE, 0, 0, 0,
     4, 0xB9, 0xFA, 0xF1, 0x0E };
 
-REGISTER_ARC_I(
-  "Mub", "mub", 0, 0xE2,
-  k_Signature,
-  0,
-  NArcInfoFlags::kMultiSignature,
-  NULL)
+static IInArchive * CreateArc() {
+  return new CHandler();
+}
 
+static const CArcInfo s_arcInfo = {
+  NArcInfoFlags::kMultiSignature,
+  0xE2,
+  sizeof(k_Signature) / sizeof(k_Signature[0]),
+  0,
+  k_Signature,
+  "Mub",
+  "mub",
+  0,
+  CreateArc,
+  0,
+  0
+};
+
+}
+
+void CHandler::Register() {
+  static bool s_registered = false;
+
+  if(!s_registered) {
+    RegisterArc(&NBe::s_arcInfo);
+    s_registered = true;
+  }
 }
 
 }}
