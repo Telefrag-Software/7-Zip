@@ -1,50 +1,40 @@
-// ArchiveExports.cpp
+// ILibrary.cpp
 
-#include "StdAfx.h"
+#include "ILibrary.h"
 
-#include "../../../C/7zVersion.h"
+extern bool g_CaseSensitive;
 
-#include "../../Common/ComTry.h"
+namespace NLibrary {
 
-#include "../../Windows/PropVariant.h"
-
-#include "../Common/RegisterArc.h"
-
-STDAPI CreateArchiver(const GUID *clsid, const GUID *iid, void **outObject);
-STDAPI CreateArchiver(const GUID *clsid, const GUID *iid, void **outObject)
+HRESULT CreateArchiver(const GUID *clsid, const GUID *iid, void **outObject)
 {
-  COM_TRY_BEGIN
+  int needIn = (*iid == IID_IInArchive);
+  int needOut = (*iid == IID_IOutArchive);
+  if (!needIn && !needOut)
+    return E_NOINTERFACE;
+  int formatIndex = FindFormatCalssId(clsid);
+  if (formatIndex < 0)
+    return CLASS_E_CLASSNOTAVAILABLE;
+
+  const CArcInfo &arc = *g_Arcs[formatIndex];
+  if (needIn)
   {
-    int needIn = (*iid == IID_IInArchive);
-    int needOut = (*iid == IID_IOutArchive);
-    if (!needIn && !needOut)
-      return E_NOINTERFACE;
-    int formatIndex = FindFormatCalssId(clsid);
-    if (formatIndex < 0)
-      return CLASS_E_CLASSNOTAVAILABLE;
-    
-    const CArcInfo &arc = *g_Arcs[formatIndex];
-    if (needIn)
-    {
-      *outObject = arc.CreateInArchive();
-      ((IInArchive *)*outObject)->AddRef();
-    }
-    else
-    {
-      if (!arc.CreateOutArchive)
-        return CLASS_E_CLASSNOTAVAILABLE;
-      *outObject = arc.CreateOutArchive();
-      ((IOutArchive *)*outObject)->AddRef();
-    }
+    *outObject = arc.CreateInArchive();
+    ((IInArchive *)*outObject)->AddRef();
   }
-  COM_TRY_END
+  else
+  {
+    if (!arc.CreateOutArchive)
+      return CLASS_E_CLASSNOTAVAILABLE;
+    *outObject = arc.CreateOutArchive();
+    ((IOutArchive *)*outObject)->AddRef();
+  }
+
   return S_OK;
 }
 
-STDAPI GetHandlerProperty2(UInt32 formatIndex, PROPID propID, PROPVARIANT *value);
-STDAPI GetHandlerProperty2(UInt32 formatIndex, PROPID propID, PROPVARIANT *value)
+HRESULT GetHandlerProperty2(UInt32 formatIndex, PROPID propID, PROPVARIANT *value)
 {
-  COM_TRY_BEGIN
   NWindows::NCOM::PropVariant_Clear(value);
   if (formatIndex >= g_NumArcs)
     return E_INVALIDARG;
@@ -80,28 +70,45 @@ STDAPI GetHandlerProperty2(UInt32 formatIndex, PROPID propID, PROPVARIANT *value
   }
   prop.Detach(value);
   return S_OK;
-  COM_TRY_END
 }
 
-STDAPI GetHandlerProperty(PROPID propID, PROPVARIANT *value);
-STDAPI GetHandlerProperty(PROPID propID, PROPVARIANT *value)
+HRESULT GetHandlerProperty(PROPID propID, PROPVARIANT *value)
 {
   return GetHandlerProperty2(g_DefaultArcIndex, propID, value);
 }
 
-STDAPI GetNumberOfFormats(UINT32 *numFormats);
-STDAPI GetNumberOfFormats(UINT32 *numFormats)
+HRESULT GetNumberOfFormats(UINT32 *numFormats)
 {
   *numFormats = g_NumArcs;
   return S_OK;
 }
 
-STDAPI GetIsArc(UInt32 formatIndex, Func_IsArc *isArc);
-STDAPI GetIsArc(UInt32 formatIndex, Func_IsArc *isArc)
+HRESULT GetIsArc(UInt32 formatIndex, Func_IsArc *isArc)
 {
   *isArc = NULL;
   if (formatIndex >= g_NumArcs)
     return E_INVALIDARG;
   *isArc = g_Arcs[formatIndex]->IsArc;
   return S_OK;
+}
+
+HRESULT CreateObject(const GUID *clsid, const GUID *iid, void **outObject)
+{
+  return CreateArchiver(clsid, iid, outObject);
+}
+
+HRESULT SetLargePageMode()
+{
+  #if defined(_7ZIP_LARGE_PAGES)
+  SetLargePageSize();
+  #endif
+  return S_OK;
+}
+
+HRESULT SetCaseSensitive(Int32 caseSensitive)
+{
+  g_CaseSensitive = (caseSensitive != 0);
+  return S_OK;
+}
+
 }

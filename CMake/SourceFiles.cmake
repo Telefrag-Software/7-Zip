@@ -307,6 +307,8 @@ set(SEVEN_ZIP_CPP_SOURCE_FILES
 	7zip/Common/CreateCoder.h
 	7zip/Common/FilePathAutoRename.cpp
 	7zip/Common/FileStreams.h
+	7zip/Common/ILibrary.cpp
+	7zip/Common/ILibrary.h
 	7zip/Common/InBuffer.cpp
 	7zip/Common/InOutTempBuffer.h
 	7zip/Common/LockedStream.cpp
@@ -331,6 +333,7 @@ set(SEVEN_ZIP_CPP_SOURCE_FILES
 	7zip/Common/OutBuffer.cpp
 	7zip/Common/OutMemStream.h
 	7zip/Common/ProgressUtils.cpp
+	7zip/Common/RegisterArc.cpp
 	7zip/Common/RegisterArc.h
 	7zip/Common/StreamBinder.cpp
 	7zip/Common/StreamObjects.h

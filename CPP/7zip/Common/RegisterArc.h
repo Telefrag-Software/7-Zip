@@ -5,6 +5,14 @@
 
 #include "../Archive/IArchive.h"
 
+#define CLS_ARC_ID_ITEM(cls) ((cls).Data4[5])
+
+DEFINE_GUID(CLSID_CArchiveHandler,
+    k_7zip_GUID_Data1,
+    k_7zip_GUID_Data2,
+    k_7zip_GUID_Data3_Common,
+    0x10, 0x00, 0x00, 0x01, 0x10, 0x00, 0x00, 0x00);
+
 struct CArcInfo
 {
   UInt16 Flags;
@@ -24,8 +32,26 @@ struct CArcInfo
   bool IsMultiSignature() const { return (Flags & NArcInfoFlags::kMultiSignature) != 0; }
 };
 
+extern const unsigned kNumArcsMax;
+extern unsigned g_NumArcs;
+extern unsigned g_DefaultArcIndex;
+extern const CArcInfo *g_Arcs[];
+
 void RegisterArc(const CArcInfo *arcInfo) throw();
 
+inline HRESULT SetPropStrFromBin(const char *s, unsigned size, PROPVARIANT *value)
+{
+  if ((value->bstrVal = ::SysAllocStringByteLen(s, size)) != 0)
+    value->vt = VT_BSTR;
+  return S_OK;
+}
+
+inline HRESULT SetPropGUID(const GUID &guid, PROPVARIANT *value)
+{
+  return SetPropStrFromBin((const char *)&guid, sizeof(guid), value);
+}
+
+int FindFormatCalssId(const GUID *clsid);
 
 #define IMP_CreateArcIn_2(c) \
   static IInArchive *CreateArc() { return new c; }
