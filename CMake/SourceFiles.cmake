@@ -105,7 +105,6 @@ set(SEVEN_ZIP_CPP_SOURCE_FILES
 	7zip/IProgress.h
 	7zip/IStream.h
 	7zip/PropID.h
-	7zip/Archive/ArchiveExports.cpp
 	7zip/Archive/Bz2Handler.cpp
 	7zip/Archive/DeflateProps.h
 	7zip/Archive/ElfHandler.cpp
@@ -384,7 +383,6 @@ set(SEVEN_ZIP_CPP_SOURCE_FILES
 	7zip/Compress/BcjCoder.cpp
 	7zip/Compress/BitmEncoder.h
 	7zip/Compress/BZip2Crc.h
-	7zip/Compress/CodecExports.cpp
 	7zip/Compress/DeflateDecoder.h
 	7zip/Compress/HuffmanDecoder.h
 	7zip/Compress/LzhDecoder.cpp
@@ -621,22 +619,8 @@ set(SEVEN_ZIP_CPP_SOURCE_FILES
 	Windows/Control/Window2.h
 )
 
-source_group(Source                     REGULAR_EXPRESSION "C(PP)?.*\\.(h|c(pp)?)")
-source_group(Source/7zip/Archive        REGULAR_EXPRESSION "CPP/7zip/Archive/.*\\.(h|cpp)")
-source_group(Source/7zip/Archive/7z     REGULAR_EXPRESSION "CPP/7zip/Archive/7z/.*\\.(h|cpp)")
-source_group(Source/7zip/Archive/Cab    REGULAR_EXPRESSION "CPP/7zip/Archive/Cab/.*\\.(h|cpp)")
-source_group(Source/7zip/Archive/Chm    REGULAR_EXPRESSION "CPP/7zip/Archive/Chm/.*\\.(h|cpp)")
-source_group(Source/7zip/Archive/Common REGULAR_EXPRESSION "CPP/7zip/Archive/Common/.*\\.(h|cpp)")
-source_group(Source/7zip/Archive/Iso    REGULAR_EXPRESSION "CPP/7zip/Archive/Iso/.*\\.(h|cpp)")
-source_group(Source/7zip/Archive/Nsis   REGULAR_EXPRESSION "CPP/7zip/Archive/Nsis/.*\\.(h|cpp)")
-source_group(Source/7zip/Archive/Rar    REGULAR_EXPRESSION "CPP/7zip/Archive/Rar/.*\\.(h|cpp)")
-source_group(Source/7zip/Archive/Tar    REGULAR_EXPRESSION "CPP/7zip/Archive/Tar/.*\\.(h|cpp)")
-source_group(Source/7zip/Archive/Udf    REGULAR_EXPRESSION "CPP/7zip/Archive/Udf/.*\\.(h|cpp)")
-source_group(Source/7zip/Archive/Wim    REGULAR_EXPRESSION "CPP/7zip/Archive/Wim/.*\\.(h|cpp)")
-source_group(Source/7zip/Archive/Zip    REGULAR_EXPRESSION "CPP/7zip/Archive/Zip/.*\\.(h|cpp)")
-source_group(Source/7zip/Common         REGULAR_EXPRESSION "CPP/7zip/Common/.*\\.(h|cpp)")
-source_group(Source/7zip/Crypto         REGULAR_EXPRESSION "CPP/7zip/Crypto/.*\\.(h|cpp)")
-source_group(Source/Common              REGULAR_EXPRESSION "CPP/Common/.*\\.(h|cpp)")
-source_group(Source/Windows             REGULAR_EXPRESSION "CPP/Windows/.*\\.(h|cpp)")
-source_group(Source/Windows/Control     REGULAR_EXPRESSION "CPP/Windows/Control/.*\\.(h|cpp)")
-source_group(Source REGULAR_EXPRESSION "C(PP)?.*\\.(h|c(pp)?)")
+list(TRANSFORM SEVEN_ZIP_C_SOURCE_FILES PREPEND "C/")
+list(TRANSFORM SEVEN_ZIP_CPP_SOURCE_FILES PREPEND "CPP/")
+
+source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${SEVEN_ZIP_C_SOURCE_FILES})
+source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${SEVEN_ZIP_CPP_SOURCE_FILES})
