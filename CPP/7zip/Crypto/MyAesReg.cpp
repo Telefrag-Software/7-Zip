@@ -10,20 +10,31 @@ namespace NCrypto {
 
 #ifndef _SFX
 
-#define REGISTER_AES_2(name, nameString, keySize, isCtr) \
-  REGISTER_FILTER_E(name, \
-    CAesCoder(false, keySize, isCtr), \
-    CAesCoder(true , keySize, isCtr), \
-    0x6F00100 | ((keySize - 16) * 8) | (isCtr ? 4 : 1), \
-    nameString) \
+static void * AES256CBC_CreateDec() {
+  return (void *)(ICompressFilter *)(new CAesCoder(false, 32, false));
+}
 
-#define REGISTER_AES(name, nameString, isCtr) \
-  /* REGISTER_AES_2(AES128 ## name, "AES128" nameString, 16, isCtr) */ \
-  /* REGISTER_AES_2(AES192 ## name, "AES192" nameString, 24, isCtr) */ \
-  REGISTER_AES_2(AES256 ## name, "AES256" nameString, 32, isCtr) \
+static void * AES256CBC_CreateEnc() {
+  return (void *)(ICompressFilter *)(new CAesCoder(true, 32, false));
+}
 
-REGISTER_AES(CBC, "CBC", false)
-// REGISTER_AES(CTR, "CTR", true)
+static const CCodecInfo s_codecInfo_AES256CBC = {
+  AES256CBC_CreateDec,
+  AES256CBC_CreateEnc,
+  0x6F00100 | ((32 - 16) * 8) | 4,
+  "AES256CBC",
+  1,
+  true
+};
+
+void CAesCoder::Register() {
+  static bool s_registered = false;
+
+  if(!s_registered) {
+    RegisterCodec(&s_codecInfo_AES256CBC);
+    s_registered = true;
+  }
+}
 
 #endif
 

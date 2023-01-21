@@ -38,6 +38,8 @@ class CDecoder:
   UInt32 _outStep;
 
 public:
+  static void Register();
+
   MY_QUERYINTERFACE_BEGIN2(ICompressCoder)
   MY_QUERYINTERFACE_ENTRY(ICompressSetDecoderProperties2)
   MY_QUERYINTERFACE_ENTRY(ICompressSetFinishMode)

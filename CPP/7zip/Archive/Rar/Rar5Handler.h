@@ -404,12 +404,14 @@ private:
       IArchiveOpenCallback *openCallback);
 
 public:
+  static void Register();
+
   MY_QUERYINTERFACE_BEGIN2(IInArchive)
   MY_QUERYINTERFACE_ENTRY(IArchiveGetRawProps)
   QUERY_ENTRY_ISetCompressCodecsInfo
   MY_QUERYINTERFACE_END
   MY_ADDREF_RELEASE
-  
+
   INTERFACE_IInArchive(;)
   INTERFACE_IArchiveGetRawProps(;)
 
@@ -418,4 +420,24 @@ public:
 
 }}
 
-#endif
+namespace NHash {
+
+class CBlake2spHasher:
+  public IHasher,
+  public CMyUnknownImp
+{
+  CBlake2sp _blake;
+  Byte mtDummy[1 << 7];
+
+public:
+  static void Register();
+
+  CBlake2spHasher();
+
+  MY_UNKNOWN_IMP
+  INTERFACE_IHasher(;)
+};
+
+}
+
+#endif // __RAR5_HANDLER_H

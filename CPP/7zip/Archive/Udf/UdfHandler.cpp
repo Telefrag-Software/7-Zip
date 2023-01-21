@@ -108,17 +108,7 @@ STDMETHODIMP CHandler::GetArchiveProperty(PROPID propID, PROPVARIANT *value)
   COM_TRY_END
 }
 
-class CProgressImp: public CProgressVirt
-{
-  CMyComPtr<IArchiveOpenCallback> _callback;
-  UInt64 _numFiles;
-  UInt64 _numBytes;
-public:
-  HRESULT SetTotal(UInt64 numBytes);
-  HRESULT SetCompleted(UInt64 numFiles, UInt64 numBytes);
-  HRESULT SetCompleted();
-  CProgressImp(IArchiveOpenCallback *callback): _callback(callback), _numFiles(0), _numBytes(0) {}
-};
+CProgressImp::CProgressImp(IArchiveOpenCallback *callback): _callback(callback), _numFiles(0), _numBytes(0) {}
 
 HRESULT CProgressImp::SetTotal(UInt64 numBytes)
 {
@@ -366,11 +356,31 @@ static const UInt32 kIsoStartPos = 0x8000;
 //  5, { 0, 'N', 'S', 'R', '0' },
 static const Byte k_Signature[] = { 1, 'C', 'D', '0', '0', '1' };
 
-REGISTER_ARC_I(
-  "Udf", "udf iso img", 0, 0xE0,
-  k_Signature,
-  kIsoStartPos,
+static IInArchive * CreateArc() {
+  return new CHandler();
+}
+
+static const CArcInfo s_arcInfo = {
   NArcInfoFlags::kStartOpen,
-  IsArc_Udf)
+  0xE0,
+  sizeof(k_Signature) / sizeof(k_Signature[0]),
+  kIsoStartPos,
+  k_Signature,
+  "Udf",
+  "udf iso img",
+  0,
+  CreateArc,
+  0,
+  IsArc_Udf
+};
+
+void CHandler::Register() {
+  static bool s_registered = false;
+
+  if(!s_registered) {
+    RegisterArc(&s_arcInfo);
+    s_registered = true;
+  }
+}
 
 }}

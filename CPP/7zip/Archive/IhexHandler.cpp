@@ -16,32 +16,10 @@
 #include "../Common/StreamUtils.h"
 #include "../Common/InBuffer.h"
 
+#include "IhexHandler.h"
+
 namespace NArchive {
 namespace NIhex {
-
-/* We still don't support files with custom record types: 20, 22: used by Samsung */
-
-struct CBlock
-{
-  CByteDynamicBuffer Data;
-  UInt32 Offset;
-};
-
-class CHandler:
-  public IInArchive,
-  public CMyUnknownImp
-{
-  bool _isArc;
-  bool _needMoreInput;
-  bool _dataError;
-  
-  UInt64 _phySize;
-
-  CObjectVector<CBlock> _blocks;
-public:
-  MY_UNKNOWN_IMP1(IInArchive)
-  INTERFACE_IInArchive(;)
-};
 
 static const Byte kProps[] =
 {
@@ -488,10 +466,31 @@ STDMETHODIMP CHandler::Extract(const UInt32 *indices, UInt32 numItems,
 
 // k_Signature: { ':', '1' }
 
-REGISTER_ARC_I_NO_SIG(
-  "IHex", "ihex", 0, 0xCD,
-  0,
+static IInArchive * CreateArc() {
+  return new CHandler();
+}
+
+static const CArcInfo s_arcInfo = {
   NArcInfoFlags::kStartOpen,
-  IsArc_Ihex)
+  0xCD,
+  0,
+  0,
+  0,
+  "IHex",
+  "ihex",
+  0,
+  CreateArc,
+  0,
+  IsArc_Ihex
+};
+
+void CHandler::Register() {
+  static bool s_registered = false;
+
+  if(!s_registered) {
+    RegisterArc(&s_arcInfo);
+    s_registered = true;
+  }
+}
 
 }}

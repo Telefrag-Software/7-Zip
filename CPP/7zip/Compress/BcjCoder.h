@@ -20,6 +20,8 @@ class CCoder:
   UInt32 _prevMask;
   int _encode;
 public:
+  static void Register();
+
   MY_UNKNOWN_IMP1(ICompressFilter);
   INTERFACE_ICompressFilter(;)
 

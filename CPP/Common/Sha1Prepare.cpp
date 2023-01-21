@@ -2,6 +2,17 @@
 
 #include "StdAfx.h"
 
-#include "../../C/Sha1.h"
+#include "Sha1Hasher.h"
 
-static struct CSha1Prepare { CSha1Prepare() { Sha1Prepare(); } } g_Sha1Prepare;
+namespace NHash {
+
+void CSha1Hasher::Prepare() {
+  static bool s_prepared = false;
+
+  if(!s_prepared) {
+    Sha1Prepare();
+    s_prepared = true;
+  }
+}
+
+}

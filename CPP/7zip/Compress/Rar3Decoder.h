@@ -232,6 +232,8 @@ class CDecoder:
   bool InputEofError_Fast() const { return (m_InBitStream.BitDecoder.Stream.NumExtraBytes > 2); }
 
 public:
+  static void Register();
+
   CDecoder();
   ~CDecoder();
 

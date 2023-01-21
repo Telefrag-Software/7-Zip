@@ -14,21 +14,10 @@
 
 #include "Common/DummyOutStream.h"
 
+#include "ZHandler.h"
+
 namespace NArchive {
 namespace NZ {
-
-class CHandler:
-  public IInArchive,
-  public CMyUnknownImp
-{
-  CMyComPtr<IInStream> _stream;
-  UInt64 _packSize;
-  // UInt64 _unpackSize;
-  // bool _unpackSize_Defined;
-public:
-  MY_UNKNOWN_IMP1(IInArchive)
-  INTERFACE_IInArchive(;)
-};
 
 static const Byte kProps[] =
 {
@@ -68,16 +57,7 @@ STDMETHODIMP CHandler::GetProperty(UInt32 /* index */, PROPID propID, PROPVARIAN
 }
 
 /*
-class CCompressProgressInfoImp:
-  public ICompressProgressInfo,
-  public CMyUnknownImp
-{
-  CMyComPtr<IArchiveOpenCallback> Callback;
-public:
-  MY_UNKNOWN_IMP1(ICompressProgressInfo)
-  STDMETHOD(SetRatioInfo)(const UInt64 *inSize, const UInt64 *outSize);
-  void Init(IArchiveOpenCallback *callback) { Callback = callback; }
-};
+void CCompressProgressInfoImp::Init(IArchiveOpenCallback *callback); { Callback = callback; }
 
 STDMETHODIMP CCompressProgressInfoImp::SetRatioInfo(const UInt64 *inSize, const UInt64 *outSize)
 {
@@ -226,11 +206,31 @@ STDMETHODIMP CHandler::Extract(const UInt32 *indices, UInt32 numItems,
 
 static const Byte k_Signature[] = { 0x1F, 0x9D };
 
-REGISTER_ARC_I(
-  "Z", "z taz", "* .tar", 5,
+static IInArchive * CreateArc() {
+  return new CHandler();
+}
+
+static const CArcInfo s_arcInfo = {
+  0,
+  5,
+  sizeof(k_Signature) / sizeof(k_Signature[0]),
+  0,
   k_Signature,
+  "Z",
+  "z taz",
+  "* .tar",
+  CreateArc,
   0,
-  0,
-  IsArc_Z)
+  IsArc_Z
+};
+
+void CHandler::Register() {
+  static bool s_registered = false;
+
+  if(!s_registered) {
+    RegisterArc(&s_arcInfo);
+    s_registered = true;
+  }
+}
 
 }}

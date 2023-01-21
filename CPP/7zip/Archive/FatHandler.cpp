@@ -24,6 +24,8 @@
 
 #include "Common/DummyOutStream.h"
 
+#include "FatHandler.h"
+
 #define Get16(p) GetUi16(p)
 #define Get32(p) GetUi32(p)
 
@@ -34,72 +36,33 @@ namespace NFat {
 
 static const UInt32 kFatItemUsedByDirMask = (UInt32)1 << 31;
 
-struct CHeader
+bool CHeader::IsFat32() const { return NumFatBits == 32; }
+UInt64 CHeader::GetPhySize() const { return (UInt64)NumSectors << SectorSizeLog; }
+UInt32 CHeader::SectorSize() const { return (UInt32)1 << SectorSizeLog; }
+UInt32 CHeader::ClusterSize() const { return (UInt32)1 << ClusterSizeLog; }
+UInt32 CHeader::ClusterToSector(UInt32 c) const { return DataSector + ((c - 2) << SectorsPerClusterLog); }
+UInt32 CHeader::IsEoc(UInt32 c) const { return c > BadCluster; }
+UInt32 CHeader::IsEocAndUnused(UInt32 c) const { return c > BadCluster && (c & kFatItemUsedByDirMask) == 0; }
+UInt32 CHeader::IsValidCluster(UInt32 c) const { return c >= 2 && c < FatSize; }
+UInt32 CHeader::SizeToSectors(UInt32 size) const { return (size + SectorSize() - 1) >> SectorSizeLog; }
+UInt32 CHeader::CalcFatSizeInSectors() const { return SizeToSectors((FatSize * (NumFatBits / 4) + 1) / 2); }
+
+UInt32 CHeader::GetFatSector() const
 {
-  UInt32 NumSectors;
-  UInt16 NumReservedSectors;
-  Byte NumFats;
-  UInt32 NumFatSectors;
-  UInt32 RootDirSector;
-  UInt32 NumRootDirSectors;
-  UInt32 DataSector;
+  UInt32 index = (IsFat32() && (Flags & 0x80) != 0) ? (Flags & 0xF) : 0;
+  if (index > NumFats)
+    index = 0;
+  return NumReservedSectors + index * NumFatSectors;
+}
 
-  UInt32 FatSize;
-  UInt32 BadCluster;
+UInt64 CHeader::GetFilePackSize(UInt32 unpackSize) const
+{
+  UInt64 mask = ClusterSize() - 1;
+  return (unpackSize + mask) & ~mask;
+}
 
-  Byte NumFatBits;
-  Byte SectorSizeLog;
-  Byte SectorsPerClusterLog;
-  Byte ClusterSizeLog;
-  
-  UInt16 SectorsPerTrack;
-  UInt16 NumHeads;
-  UInt32 NumHiddenSectors;
-
-  bool VolFieldsDefined;
-  
-  UInt32 VolId;
-  // Byte VolName[11];
-  // Byte FileSys[8];
-
-  // Byte OemName[5];
-  Byte MediaType;
-
-  // 32-bit FAT
-  UInt16 Flags;
-  UInt16 FsInfoSector;
-  UInt32 RootCluster;
-
-  bool IsFat32() const { return NumFatBits == 32; }
-  UInt64 GetPhySize() const { return (UInt64)NumSectors << SectorSizeLog; }
-  UInt32 SectorSize() const { return (UInt32)1 << SectorSizeLog; }
-  UInt32 ClusterSize() const { return (UInt32)1 << ClusterSizeLog; }
-  UInt32 ClusterToSector(UInt32 c) const { return DataSector + ((c - 2) << SectorsPerClusterLog); }
-  UInt32 IsEoc(UInt32 c) const { return c > BadCluster; }
-  UInt32 IsEocAndUnused(UInt32 c) const { return c > BadCluster && (c & kFatItemUsedByDirMask) == 0; }
-  UInt32 IsValidCluster(UInt32 c) const { return c >= 2 && c < FatSize; }
-  UInt32 SizeToSectors(UInt32 size) const { return (size + SectorSize() - 1) >> SectorSizeLog; }
-  UInt32 CalcFatSizeInSectors() const { return SizeToSectors((FatSize * (NumFatBits / 4) + 1) / 2); }
-
-  UInt32 GetFatSector() const
-  {
-    UInt32 index = (IsFat32() && (Flags & 0x80) != 0) ? (Flags & 0xF) : 0;
-    if (index > NumFats)
-      index = 0;
-    return NumReservedSectors + index * NumFatSectors;
-  }
-
-  UInt64 GetFilePackSize(UInt32 unpackSize) const
-  {
-    UInt64 mask = ClusterSize() - 1;
-    return (unpackSize + mask) & ~mask;
-  }
-
-  UInt32 GetNumClusters(UInt32 size) const
-    { return (UInt32)(((UInt64)size + ClusterSize() - 1) >> ClusterSizeLog); }
-
-  bool Parse(const Byte *p);
-};
+UInt32 CHeader::GetNumClusters(UInt32 size) const
+  { return (UInt32)(((UInt64)size + ClusterSize() - 1) >> ClusterSizeLog); }
 
 static int GetLog(UInt32 num)
 {
@@ -261,28 +224,9 @@ bool CHeader::Parse(const Byte *p)
   return true;
 }
 
-struct CItem
-{
-  UString UName;
-  char DosName[11];
-  Byte CTime2;
-  UInt32 CTime;
-  UInt32 MTime;
-  UInt16 ADate;
-  Byte Attrib;
-  Byte Flags;
-  UInt32 Size;
-  UInt32 Cluster;
-  Int32 Parent;
-
-  // NT uses Flags to store Low Case status
-  bool NameIsLow() const { return (Flags & 0x8) != 0; }
-  bool ExtIsLow() const { return (Flags & 0x10) != 0; }
-  bool IsDir() const { return (Attrib & 0x10) != 0; }
-  UString GetShortName() const;
-  UString GetName() const;
-  UString GetVolName() const;
-};
+bool CItem::NameIsLow() const { return (Flags & 0x8) != 0; }
+bool CItem::ExtIsLow() const { return (Flags & 0x10) != 0; }
+bool CItem::IsDir() const { return (Attrib & 0x10) != 0; }
 
 static unsigned CopyAndTrim(char *dest, const char *src, unsigned size, bool toLower)
 {
@@ -341,47 +285,20 @@ UString CItem::GetVolName() const
   return FatStringToUnicode(s);
 }
 
-struct CDatabase
+CDatabase::CDatabase(): Fat(0) {}
+CDatabase::~CDatabase() { ClearAndClose(); }
+
+UInt64 CDatabase::GetHeadersSize() const
 {
-  CHeader Header;
-  CObjectVector<CItem> Items;
-  UInt32 *Fat;
-  CMyComPtr<IInStream> InStream;
-  IArchiveOpenCallback *OpenCallback;
-
-  UInt32 NumFreeClusters;
-  bool VolItemDefined;
-  CItem VolItem;
-  UInt32 NumDirClusters;
-  CByteBuffer ByteBuf;
-  UInt64 NumCurUsedBytes;
-
-  UInt64 PhySize;
-
-  CDatabase(): Fat(0) {}
-  ~CDatabase() { ClearAndClose(); }
-
-  void Clear();
-  void ClearAndClose();
-  HRESULT OpenProgressFat(bool changeTotal = true);
-  HRESULT OpenProgress();
-
-  UString GetItemPath(Int32 index) const;
-  HRESULT Open();
-  HRESULT ReadDir(Int32 parent, UInt32 cluster, unsigned level);
-
-  UInt64 GetHeadersSize() const
-  {
-    return (UInt64)(Header.DataSector + (NumDirClusters << Header.SectorsPerClusterLog)) << Header.SectorSizeLog;
-  }
-  HRESULT SeekToSector(UInt32 sector);
-  HRESULT SeekToCluster(UInt32 cluster) { return SeekToSector(Header.ClusterToSector(cluster)); }
-};
+  return (UInt64)(Header.DataSector + (NumDirClusters << Header.SectorsPerClusterLog)) << Header.SectorSizeLog;
+}
 
 HRESULT CDatabase::SeekToSector(UInt32 sector)
 {
   return InStream->Seek((UInt64)sector << Header.SectorSizeLog, STREAM_SEEK_SET, NULL);
 }
+
+HRESULT CDatabase::SeekToCluster(UInt32 cluster) { return SeekToSector(Header.ClusterToSector(cluster)); }
 
 void CDatabase::Clear()
 {
@@ -747,18 +664,6 @@ HRESULT CDatabase::Open()
   return S_OK;
 }
 
-class CHandler:
-  public IInArchive,
-  public IInArchiveGetStream,
-  public CMyUnknownImp,
-  CDatabase
-{
-public:
-  MY_UNKNOWN_IMP2(IInArchive, IInArchiveGetStream)
-  INTERFACE_IInArchive(;)
-  STDMETHOD(GetStream)(UInt32 index, ISequentialInStream **stream);
-};
-
 STDMETHODIMP CHandler::GetStream(UInt32 index, ISequentialInStream **stream)
 {
   COM_TRY_BEGIN
@@ -1053,11 +958,31 @@ STDMETHODIMP CHandler::GetNumberOfItems(UInt32 *numItems)
 
 static const Byte k_Signature[] = { 0x55, 0xAA };
 
-REGISTER_ARC_I(
-  "FAT", "fat img", 0, 0xDA,
-  k_Signature,
-  0x1FE,
+static IInArchive * CreateArc() {
+  return new CHandler();
+}
+
+static const CArcInfo s_arcInfo = {
   0,
-  IsArc_Fat)
+  0xDA,
+  sizeof(k_Signature) / sizeof(k_Signature[0]),
+  0x1FE,
+  k_Signature,
+  "FAT",
+  "fat img",
+  0,
+  CreateArc,
+  0,
+  IsArc_Fat
+};
+
+void CHandler::Register() {
+  static bool s_registered = false;
+
+  if(!s_registered) {
+    RegisterArc(&s_arcInfo);
+    s_registered = true;
+  }
+}
 
 }}

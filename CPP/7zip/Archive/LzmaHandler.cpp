@@ -19,6 +19,8 @@
 
 #include "Common/DummyOutStream.h"
 
+#include "LzmaHandler.h"
+
 using namespace NWindows;
 
 namespace NArchive {
@@ -48,17 +50,9 @@ static const Byte kArcProps[] =
   kpidMethod
 };
 
-struct CHeader
-{
-  UInt64 Size;
-  Byte FilterID;
-  Byte LzmaProps[5];
-
-  Byte GetProp() const { return LzmaProps[0]; }
-  UInt32 GetDicSize() const { return GetUi32(LzmaProps + 1); }
-  bool HasSize() const { return (Size != (UInt64)(Int64)-1); }
-  bool Parse(const Byte *buf, bool isThereFilter);
-};
+Byte CHeader::GetProp() const { return LzmaProps[0]; }
+UInt32 CHeader::GetDicSize() const { return GetUi32(LzmaProps + 1); }
+bool CHeader::HasSize() const { return (Size != (UInt64)(Int64)-1); }
 
 bool CHeader::Parse(const Byte *buf, bool isThereFilter)
 {
@@ -76,26 +70,12 @@ bool CHeader::Parse(const Byte *buf, bool isThereFilter)
     && CheckDicSize(LzmaProps + 1);
 }
 
-class CDecoder
-{
-  CMyComPtr<ISequentialOutStream> _bcjStream;
-  CFilterCoder *_filterCoder;
-  CMyComPtr<ICompressCoder> _lzmaDecoder;
-public:
-  NCompress::NLzma::CDecoder *_lzmaDecoderSpec;
+UInt64 CDecoder::GetInputProcessedSize() const { return _lzmaDecoderSpec->GetInputProcessedSize(); }
 
-  ~CDecoder();
-  HRESULT Create(bool filtered, ISequentialInStream *inStream);
+void CDecoder::ReleaseInStream() { if (_lzmaDecoder) _lzmaDecoderSpec->ReleaseInStream(); }
 
-  HRESULT Code(const CHeader &header, ISequentialOutStream *outStream, ICompressProgressInfo *progress);
-
-  UInt64 GetInputProcessedSize() const { return _lzmaDecoderSpec->GetInputProcessedSize(); }
-
-  void ReleaseInStream() { if (_lzmaDecoder) _lzmaDecoderSpec->ReleaseInStream(); }
-
-  HRESULT ReadInput(Byte *data, UInt32 size, UInt32 *processedSize)
-    { return _lzmaDecoderSpec->ReadFromInputStream(data, size, processedSize); }
-};
+HRESULT CDecoder::ReadInput(Byte *data, UInt32 size, UInt32 *processedSize)
+  { return _lzmaDecoderSpec->ReadFromInputStream(data, size, processedSize); }
 
 HRESULT CDecoder::Create(bool filteredMode, ISequentialInStream *inStream)
 {
@@ -166,46 +146,9 @@ HRESULT CDecoder::Code(const CHeader &header, ISequentialOutStream *outStream,
   return S_OK;
 }
 
+CHandler::CHandler(bool lzma86) { _lzma86 = lzma86; }
 
-class CHandler:
-  public IInArchive,
-  public IArchiveOpenSeq,
-  public CMyUnknownImp
-{
-  CHeader _header;
-  bool _lzma86;
-  CMyComPtr<IInStream> _stream;
-  CMyComPtr<ISequentialInStream> _seqStream;
-  
-  bool _isArc;
-  bool _needSeekToStart;
-  bool _dataAfterEnd;
-  bool _needMoreInput;
-
-  bool _packSize_Defined;
-  bool _unpackSize_Defined;
-  bool _numStreams_Defined;
-
-  bool _unsupported;
-  bool _dataError;
-
-  UInt64 _packSize;
-  UInt64 _unpackSize;
-  UInt64 _numStreams;
-
-  void GetMethod(NCOM::CPropVariant &prop);
-
-public:
-  MY_UNKNOWN_IMP2(IInArchive, IArchiveOpenSeq)
-
-  INTERFACE_IInArchive(;)
-  STDMETHOD(OpenSeq)(ISequentialInStream *stream);
-
-  CHandler(bool lzma86) { _lzma86 = lzma86; }
-
-  unsigned GetHeaderSize() const { return 5 + 8 + (_lzma86 ? 1 : 0); }
-
-};
+unsigned CHandler::GetHeaderSize() const { return 5 + 8 + (_lzma86 ? 1 : 0); }
 
 IMP_IInArchive_Props
 IMP_IInArchive_ArcProps
@@ -430,18 +373,7 @@ STDMETHODIMP CHandler::Close()
    return S_OK;
 }
 
-class CCompressProgressInfoImp:
-  public ICompressProgressInfo,
-  public CMyUnknownImp
-{
-  CMyComPtr<IArchiveOpenCallback> Callback;
-public:
-  UInt64 Offset;
- 
-  MY_UNKNOWN_IMP1(ICompressProgressInfo)
-  STDMETHOD(SetRatioInfo)(const UInt64 *inSize, const UInt64 *outSize);
-  void Init(IArchiveOpenCallback *callback) { Callback = callback; }
-};
+void CCompressProgressInfoImp::Init(IArchiveOpenCallback *callback) { Callback = callback; }
 
 STDMETHODIMP CCompressProgressInfoImp::SetRatioInfo(const UInt64 *inSize, const UInt64 * /* outSize */)
 {
@@ -475,7 +407,7 @@ STDMETHODIMP CHandler::Extract(const UInt32 *indices, UInt32 numItems,
   RINOK(extractCallback->GetStream(0, &realOutStream, askMode));
   if (!testMode && !realOutStream)
     return S_OK;
-  
+
   extractCallback->PrepareOperation(askMode);
 
   CDummyOutStream *outStreamSpec = new CDummyOutStream;
@@ -600,25 +532,56 @@ namespace NLzmaAr {
 
 // 2, { 0x5D, 0x00 },
 
-REGISTER_ARC_I_CLS_NO_SIG(
-  CHandler(false),
-  "lzma", "lzma", 0, 0xA,
+static IInArchive * CreateArc() {
+  return new CHandler(false);
+}
+
+static const CArcInfo s_arcInfo = {
+  NArcInfoFlags::kStartOpen | NArcInfoFlags::kKeepName,
+  0xA,
   0,
-  NArcInfoFlags::kStartOpen |
-  NArcInfoFlags::kKeepName,
-  IsArc_Lzma)
- 
+  0,
+  0,
+  "lzma",
+  "lzma",
+  0,
+  CreateArc,
+  0,
+  IsArc_Lzma
+};
+
 }
 
 namespace NLzma86Ar {
 
-REGISTER_ARC_I_CLS_NO_SIG(
-  CHandler(true),
-  "lzma86", "lzma86", 0, 0xB,
-  0,
+static IInArchive * CreateArc() {
+  return new CHandler(true);
+}
+
+static const CArcInfo s_arcInfo = {
   NArcInfoFlags::kKeepName,
-  IsArc_Lzma86)
- 
+  0xB,
+  0,
+  0,
+  0,
+  "lzma86",
+  "lzma86",
+  0,
+  CreateArc,
+  0,
+  IsArc_Lzma86
+};
+
+}
+
+void CHandler::Register() {
+  static bool s_registered = false;
+
+  if(!s_registered) {
+    RegisterArc(&NLzmaAr::s_arcInfo);
+    RegisterArc(&NLzma86Ar::s_arcInfo);
+    s_registered = true;
+  }
 }
 
 }}

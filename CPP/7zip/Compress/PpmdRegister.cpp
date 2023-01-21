@@ -13,10 +13,30 @@
 namespace NCompress {
 namespace NPpmd {
 
-REGISTER_CODEC_E(PPMD,
-    CDecoder(),
-    CEncoder(),
-    0x30401,
-    "PPMD")
+static void * PPMD_CreateDec() {
+  return (void *)(ICompressFilter *)(new CDecoder());
+}
+
+static void * PPMD_CreateEnc() {
+  return (void *)(ICompressFilter *)(new CEncoder());
+}
+
+static const CCodecInfo s_codecInfo_PPMD = {
+  PPMD_CreateDec,
+  PPMD_CreateEnc,
+  0x30401,
+  "PPMD",
+  1,
+  false
+};
+
+void CDecoder::Register() {
+  static bool s_registered = false;
+
+  if(!s_registered) {
+    RegisterCodec(&s_codecInfo_PPMD);
+    s_registered = true;
+  }
+}
 
 }}

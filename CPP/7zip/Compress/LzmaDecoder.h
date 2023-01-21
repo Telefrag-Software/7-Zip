@@ -54,6 +54,8 @@ private:
   void SetOutStreamSizeResume(const UInt64 *outSize);
 
 public:
+  static void Register();
+
   MY_QUERYINTERFACE_BEGIN2(ICompressCoder)
   MY_QUERYINTERFACE_ENTRY(ICompressSetDecoderProperties2)
   MY_QUERYINTERFACE_ENTRY(ICompressSetFinishMode)

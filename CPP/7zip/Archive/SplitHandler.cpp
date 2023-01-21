@@ -14,6 +14,8 @@
 
 #include "Common/MultiStream.h"
 
+#include "SplitHandler.h"
+
 using namespace NWindows;
 
 namespace NArchive {
@@ -29,23 +31,6 @@ static const Byte kArcProps[] =
 {
   kpidNumVolumes,
   kpidTotalPhySize
-};
-
-class CHandler:
-  public IInArchive,
-  public IInArchiveGetStream,
-  public CMyUnknownImp
-{
-  CObjectVector<CMyComPtr<IInStream> > _streams;
-  CRecordVector<UInt64> _sizes;
-  UString _subName;
-  UInt64 _totalSize;
-
-  HRESULT Open2(IInStream *stream, IArchiveOpenCallback *callback);
-public:
-  MY_UNKNOWN_IMP2(IInArchive, IInArchiveGetStream)
-  INTERFACE_IInArchive(;)
-  STDMETHOD(GetStream)(UInt32 index, ISequentialInStream **stream);
 };
 
 IMP_IInArchive_Props
@@ -65,61 +50,54 @@ STDMETHODIMP CHandler::GetArchiveProperty(PROPID propID, PROPVARIANT *value)
   return S_OK;
 }
 
-struct CSeqName
+bool CSeqName::GetNextName(UString &s)
 {
-  UString _unchangedPart;
-  UString _changedPart;
-  bool _splitStyle;
-  
-  bool GetNextName(UString &s)
   {
+    unsigned i = _changedPart.Len();
+    for (;;)
     {
-      unsigned i = _changedPart.Len();
-      for (;;)
+      wchar_t c = _changedPart[--i];
+      
+      if (_splitStyle)
       {
-        wchar_t c = _changedPart[--i];
-        
-        if (_splitStyle)
+        if (c == 'z')
         {
-          if (c == 'z')
-          {
-            _changedPart.ReplaceOneCharAtPos(i, L'a');
-            if (i == 0)
-              return false;
-            continue;
-          }
-          else if (c == 'Z')
-          {
-            _changedPart.ReplaceOneCharAtPos(i, L'A');
-            if (i == 0)
-              return false;
-            continue;
-          }
+          _changedPart.ReplaceOneCharAtPos(i, L'a');
+          if (i == 0)
+            return false;
+          continue;
         }
-        else
+        else if (c == 'Z')
         {
-          if (c == '9')
-          {
-            _changedPart.ReplaceOneCharAtPos(i, L'0');
-            if (i == 0)
-            {
-              _changedPart.InsertAtFront(L'1');
-              break;
-            }
-            continue;
-          }
+          _changedPart.ReplaceOneCharAtPos(i, L'A');
+          if (i == 0)
+            return false;
+          continue;
         }
-
-        c++;
-        _changedPart.ReplaceOneCharAtPos(i, c);
-        break;
       }
+      else
+      {
+        if (c == '9')
+        {
+          _changedPart.ReplaceOneCharAtPos(i, L'0');
+          if (i == 0)
+          {
+            _changedPart.InsertAtFront(L'1');
+            break;
+          }
+          continue;
+        }
+      }
+
+      c++;
+      _changedPart.ReplaceOneCharAtPos(i, c);
+      break;
     }
-    
-    s = _unchangedPart + _changedPart;
-    return true;
   }
-};
+  
+  s = _unchangedPart + _changedPart;
+  return true;
+}
 
 HRESULT CHandler::Open2(IInStream *stream, IArchiveOpenCallback *callback)
 {
@@ -350,10 +328,31 @@ STDMETHODIMP CHandler::GetStream(UInt32 index, ISequentialInStream **stream)
   COM_TRY_END
 }
 
-REGISTER_ARC_I_NO_SIG(
-  "Split", "001", 0, 0xEA,
+static IInArchive * CreateArc() {
+  return new CHandler();
+}
+
+static const CArcInfo s_arcInfo = {
+  0,
+  0xEA,
   0,
   0,
-  NULL)
+  0,
+  "Split",
+  "001",
+  0,
+  CreateArc,
+  0,
+  0
+};
+
+void CHandler::Register() {
+  static bool s_registered = false;
+
+  if(!s_registered) {
+    RegisterArc(&s_arcInfo);
+    s_registered = true;
+  }
+}
 
 }}

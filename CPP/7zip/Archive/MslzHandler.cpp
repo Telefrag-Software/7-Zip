@@ -16,38 +16,12 @@
 
 #include "Common/DummyOutStream.h"
 
+#include "MslzHandler.h"
+
 namespace NArchive {
 namespace NMslz {
 
 static const UInt32 kUnpackSizeMax = 0xFFFFFFE0;
-
-class CHandler:
-  public IInArchive,
-  public IArchiveOpenSeq,
-  public CMyUnknownImp
-{
-  CMyComPtr<IInStream> _inStream;
-  CMyComPtr<ISequentialInStream> _seqStream;
-
-  bool _isArc;
-  bool _needSeekToStart;
-  bool _dataAfterEnd;
-  bool _needMoreInput;
-
-  bool _packSize_Defined;
-  bool _unpackSize_Defined;
-
-  UInt32 _unpackSize;
-  UInt64 _packSize;
-  UInt64 _originalFileSize;
-  UString _name;
-
-  void ParseName(Byte replaceByte, IArchiveOpenCallback *callback);
-public:
-  MY_UNKNOWN_IMP2(IInArchive, IArchiveOpenSeq)
-  INTERFACE_IInArchive(;)
-  STDMETHOD(OpenSeq)(ISequentialInStream *stream);
-};
 
 static const Byte kProps[] =
 {
@@ -387,11 +361,31 @@ STDMETHODIMP CHandler::Extract(const UInt32 *indices, UInt32 numItems,
   COM_TRY_END
 }
 
-REGISTER_ARC_I(
-  "MsLZ", "mslz", 0, 0xD5,
+static IInArchive * CreateArc() {
+  return new CHandler();
+}
+
+static const CArcInfo s_arcInfo = {
+  0,
+  0xD5,
+  sizeof(kSignature) / sizeof(kSignature[0]),
+  0,
   kSignature,
+  "MsLZ",
+  "mslz",
   0,
+  CreateArc,
   0,
-  NULL)
+  0
+};
+
+void CHandler::Register() {
+  static bool s_registered = false;
+
+  if(!s_registered) {
+    RegisterArc(&s_arcInfo);
+    s_registered = true;
+  }
+}
 
 }}

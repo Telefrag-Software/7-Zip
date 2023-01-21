@@ -116,6 +116,8 @@ class CDecoder:
   public ICompressSetDecoderProperties2
 {
 public:
+  static void Register();
+
   MY_UNKNOWN_IMP3(
       ICompressFilter,
       ICryptoSetPassword,

@@ -17,6 +17,8 @@
 
 #include "../Compress/CopyCoder.h"
 
+#include "ElfHandler.h"
+
 using namespace NWindows;
 
 static UInt16 Get16(const Byte *p, bool be) { if (be) return GetBe16(p); return GetUi16(p); }
@@ -56,34 +58,9 @@ static const UInt32 kSegmentSize64 = 0x38;
 static const UInt32 kSectionSize32 = 0x28;
 static const UInt32 kSectionSize64 = 0x40;
 
-struct CHeader
-{
-  bool Mode64;
-  bool Be;
-  Byte Os;
-  Byte AbiVer;
-
-  UInt16 Type;
-  UInt16 Machine;
-  // UInt32 Version;
-
-  // UInt64 EntryVa;
-  UInt64 ProgOffset;
-  UInt64 SectOffset;
-  UInt32 Flags;
-  UInt16 HeaderSize;
-  UInt16 SegmentEntrySize;
-  UInt16 NumSegments;
-  UInt16 SectionEntrySize;
-  UInt16 NumSections;
-  UInt16 NamesSectIndex;
-
-  bool Parse(const Byte *buf);
-
-  UInt64 GetHeadersSize() const { return (UInt64)HeaderSize +
-      (UInt32)NumSegments * SegmentEntrySize +
-      (UInt32)NumSections * SectionEntrySize; }
-};
+UInt64 CHeader::GetHeadersSize() const { return (UInt64)HeaderSize +
+    (UInt32)NumSegments * SegmentEntrySize +
+    (UInt32)NumSections * SectionEntrySize; }
 
 bool CHeader::Parse(const Byte *p)
 {
@@ -175,25 +152,12 @@ static const char * const g_SegmentFlags[] =
   , "Read"
 };
 
-struct CSegment
+void CSegment::UpdateTotalSize(UInt64 &totalSize)
 {
-  UInt32 Type;
-  UInt32 Flags;
-  UInt64 Offset;
-  UInt64 Va;
-  // UInt64 Pa;
-  UInt64 Size;
-  UInt64 VSize;
-  UInt64 Align;
-
-  void UpdateTotalSize(UInt64 &totalSize)
-  {
-    UInt64 t = Offset + Size;
-    if (totalSize < t)
-      totalSize = t;
-  }
-  void Parse(const Byte *p, bool mode64, bool be);
-};
+  UInt64 t = Offset + Size;
+  if (totalSize < t)
+    totalSize = t;
+}
 
 void CSegment::Parse(const Byte *p, bool mode64, bool be)
 {
@@ -303,29 +267,14 @@ static const CUInt32PCharPair g_SectionFlags[] =
   { 28, "64_LARGE" },
 };
 
-struct CSection
+UInt64 CSection::GetSize() const { return Type == SHT_NOBITS ? 0 : VSize; }
+
+void CSection::UpdateTotalSize(UInt64 &totalSize)
 {
-  UInt32 Name;
-  UInt32 Type;
-  UInt64 Flags;
-  UInt64 Va;
-  UInt64 Offset;
-  UInt64 VSize;
-  UInt32 Link;
-  UInt32 Info;
-  UInt64 AddrAlign;
-  UInt64 EntSize;
-
-  UInt64 GetSize() const { return Type == SHT_NOBITS ? 0 : VSize; }
-
-  void UpdateTotalSize(UInt64 &totalSize)
-  {
-    UInt64 t = Offset + GetSize();
-    if (totalSize < t)
-      totalSize = t;
-  }
-  bool Parse(const Byte *p, bool mode64, bool be);
-};
+  UInt64 t = Offset + GetSize();
+  if (totalSize < t)
+    totalSize = t;
+}
 
 bool CSection::Parse(const Byte *p, bool mode64, bool be)
 {
@@ -651,33 +600,6 @@ static const char * const g_Types[] =
   , "Core file"
 };
 
-
-
-
-class CHandler:
-  public IInArchive,
-  public IArchiveAllowTail,
-  public CMyUnknownImp
-{
-  CRecordVector<CSegment> _segments;
-  CRecordVector<CSection> _sections;
-  CByteBuffer _namesData;
-  CMyComPtr<IInStream> _inStream;
-  UInt64 _totalSize;
-  CHeader _header;
-  bool _headersError;
-  bool _allowTail;
-
-  void GetSectionName(UInt32 index, NCOM::CPropVariant &prop, bool showNULL) const;
-  HRESULT Open2(IInStream *stream);
-public:
-  MY_UNKNOWN_IMP2(IInArchive, IArchiveAllowTail)
-  INTERFACE_IInArchive(;)
-  STDMETHOD(AllowTail)(Int32 allowTail);
-
-  CHandler(): _allowTail(false) {}
-};
-
 void CHandler::GetSectionName(UInt32 index, NCOM::CPropVariant &prop, bool showNULL) const
 {
   if (index >= _sections.Size())
@@ -699,6 +621,8 @@ void CHandler::GetSectionName(UInt32 index, NCOM::CPropVariant &prop, bool showN
       return;
     }
 }
+
+CHandler::CHandler(): _allowTail(false) {}
 
 static const Byte kArcProps[] =
 {
@@ -1099,11 +1023,31 @@ STDMETHODIMP CHandler::AllowTail(Int32 allowTail)
 
 static const Byte k_Signature[] = { 0x7F, 'E', 'L', 'F' };
 
-REGISTER_ARC_I(
-  "ELF", "elf", 0, 0xDE,
-  k_Signature,
-  0,
+static IInArchive * CreateArc() {
+  return new CHandler();
+}
+
+static const CArcInfo s_arcInfo = {
   NArcInfoFlags::kPreArc,
-  NULL)
+  0xDE,
+  sizeof(k_Signature) / sizeof(k_Signature[0]),
+  0,
+  k_Signature,
+  "ELF",
+  "elf",
+  0,
+  CreateArc,
+  0,
+  0
+};
+
+void CHandler::Register() {
+  static bool s_registered = false;
+
+  if(!s_registered) {
+    RegisterArc(&s_arcInfo);
+    s_registered = true;
+  }
+}
 
 }}

@@ -17,12 +17,14 @@ class CHandler:
   public CMyUnknownImp
 {
 public:
+  static void Register();
+
   MY_UNKNOWN_IMP1(IInArchive)
 
   INTERFACE_IInArchive(;)
 
   bool _help2;
-  CHandler(bool help2): _help2(help2) {}
+  CHandler(bool help2);
 
 private:
   CFilesDatabase m_Database;

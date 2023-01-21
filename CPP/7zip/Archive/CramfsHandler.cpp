@@ -22,27 +22,14 @@
 #include "../Compress/CopyCoder.h"
 #include "../Compress/ZlibDecoder.h"
 
+#include "CramfsHandler.h"
+
 namespace NArchive {
 namespace NCramfs {
 
 #define SIGNATURE { 'C','o','m','p','r','e','s','s','e','d',' ','R','O','M','F','S' }
 
 static const Byte kSignature[] = SIGNATURE;
-
-static const UInt32 kArcSizeMax = (256 + 16) << 20;
-static const UInt32 kNumFilesMax = (1 << 19);
-static const unsigned kNumDirLevelsMax = (1 << 8);
-
-static const UInt32 kHeaderSize = 0x40;
-static const unsigned kHeaderNameSize = 16;
-static const UInt32 kNodeSize = 12;
-
-static const UInt32 kFlag_FsVer2 = (1 << 0);
-
-static const unsigned k_Flags_BlockSize_Shift = 11;
-static const unsigned k_Flags_BlockSize_Mask = 7;
-static const unsigned k_Flags_Method_Shift = 14;
-static const unsigned k_Flags_Method_Mask = 3;
 
 /*
   There is possible collision in flags:
@@ -125,110 +112,6 @@ static UInt32 GetOffset(const Byte *p, bool be)
     return GetUi32(p + 8) >> 6 << 2;
 }
 
-struct CItem
-{
-  UInt32 Offset;
-  int Parent;
-};
-
-struct CHeader
-{
-  bool be;
-  UInt32 Size;
-  UInt32 Flags;
-  // UInt32 Future;
-  UInt32 Crc;
-  // UInt32 Edition;
-  UInt32 NumBlocks;
-  UInt32 NumFiles;
-  char Name[kHeaderNameSize];
-
-  bool Parse(const Byte *p)
-  {
-    if (memcmp(p + 16, kSignature, ARRAY_SIZE(kSignature)) != 0)
-      return false;
-    switch (GetUi32(p))
-    {
-      case 0x28CD3D45: be = false; break;
-      case 0x453DCD28: be = true; break;
-      default: return false;
-    }
-    Size = Get32(p + 4);
-    Flags = Get32(p + 8);
-    // Future = Get32(p + 0xC);
-    Crc = Get32(p + 0x20);
-    // Edition = Get32(p + 0x24);
-    NumBlocks = Get32(p + 0x28);
-    NumFiles = Get32(p + 0x2C);
-    memcpy(Name, p + 0x30, kHeaderNameSize);
-    return true;
-  }
-
-  bool IsVer2() const { return (Flags & kFlag_FsVer2) != 0; }
-  unsigned GetBlockSizeShift() const { return (unsigned)(Flags >> k_Flags_BlockSize_Shift) & k_Flags_BlockSize_Mask; }
-  unsigned GetMethod() const { return (unsigned)(Flags >> k_Flags_Method_Shift) & k_Flags_Method_Mask; }
-};
-
-class CHandler:
-  public IInArchive,
-  public IInArchiveGetStream,
-  public CMyUnknownImp
-{
-  CRecordVector<CItem> _items;
-  CMyComPtr<IInStream> _stream;
-  Byte *_data;
-  UInt32 _size;
-  UInt32 _headersSize;
-
-  UInt32 _errorFlags;
-  bool _isArc;
-
-  CHeader _h;
-  UInt32 _phySize;
-
-  unsigned _method;
-  unsigned _blockSizeLog;
-
-  // Current file
-
-  NCompress::NZlib::CDecoder *_zlibDecoderSpec;
-  CMyComPtr<ICompressCoder> _zlibDecoder;
-
-  CBufInStream *_inStreamSpec;
-  CMyComPtr<ISequentialInStream> _inStream;
-
-  CBufPtrSeqOutStream *_outStreamSpec;
-  CMyComPtr<ISequentialOutStream> _outStream;
-
-  UInt32 _curBlocksOffset;
-  UInt32 _curNumBlocks;
-
-  HRESULT OpenDir(int parent, UInt32 baseOffsetBase, unsigned level);
-  HRESULT Open2(IInStream *inStream);
-  AString GetPath(int index) const;
-  bool GetPackSize(int index, UInt32 &res) const;
-  void Free();
-
-  UInt32 GetNumBlocks(UInt32 size) const
-  {
-    return (size + ((UInt32)1 << _blockSizeLog) - 1) >> _blockSizeLog;
-  }
-
-  void UpdatePhySize(UInt32 s)
-  {
-    if (_phySize < s)
-      _phySize = s;
-  }
-
-public:
-  CHandler(): _data(0) {}
-  ~CHandler() { Free(); }
-  MY_UNKNOWN_IMP2(IInArchive, IInArchiveGetStream)
-  INTERFACE_IInArchive(;)
-  STDMETHOD(GetStream)(UInt32 index, ISequentialInStream **stream);
-  HRESULT ReadBlock(UInt64 blockIndex, Byte *dest, size_t blockSize);
-};
-
 static const Byte kProps[] =
 {
   kpidPath,
@@ -250,6 +133,32 @@ static const Byte kArcProps[] =
   kpidNumSubFiles,
   kpidNumBlocks
 };
+
+
+bool CHeader::IsVer2() const { return (Flags & kFlag_FsVer2) != 0; }
+unsigned CHeader::GetBlockSizeShift() const { return (unsigned)(Flags >> k_Flags_BlockSize_Shift) & k_Flags_BlockSize_Mask; }
+unsigned CHeader::GetMethod() const { return (unsigned)(Flags >> k_Flags_Method_Shift) & k_Flags_Method_Mask; }
+
+bool CHeader::Parse(const Byte *p)
+{
+  if (memcmp(p + 16, kSignature, ARRAY_SIZE(kSignature)) != 0)
+    return false;
+  switch (GetUi32(p))
+  {
+    case 0x28CD3D45: be = false; break;
+    case 0x453DCD28: be = true; break;
+    default: return false;
+  }
+  Size = Get32(p + 4);
+  Flags = Get32(p + 8);
+  // Future = Get32(p + 0xC);
+  Crc = Get32(p + 0x20);
+  // Edition = Get32(p + 0x24);
+  NumBlocks = Get32(p + 0x28);
+  NumFiles = Get32(p + 0x2C);
+  memcpy(Name, p + 0x30, kHeaderNameSize);
+  return true;
+}
 
 IMP_IInArchive_Props
 IMP_IInArchive_ArcProps
@@ -467,6 +376,20 @@ void CHandler::Free()
 {
   MidFree(_data);
   _data = 0;
+}
+
+CHandler::CHandler(): _data(0) {}
+CHandler::~CHandler() { Free(); }
+
+UInt32 CHandler::GetNumBlocks(UInt32 size) const
+{
+  return (size + ((UInt32)1 << _blockSizeLog) - 1) >> _blockSizeLog;
+}
+
+void CHandler::UpdatePhySize(UInt32 s)
+{
+  if (_phySize < s)
+    _phySize = s;
 }
 
 STDMETHODIMP CHandler::Close()
@@ -777,11 +700,31 @@ STDMETHODIMP CHandler::GetStream(UInt32 index, ISequentialInStream **stream)
   COM_TRY_END
 }
 
-REGISTER_ARC_I(
-  "CramFS", "cramfs", 0, 0xD3,
-  kSignature,
-  16,
+static IInArchive * CreateArc() {
+  return new CHandler();
+}
+
+static const CArcInfo s_arcInfo = {
   0,
-  NULL)
+  0xD3,
+  sizeof(kSignature) / sizeof(kSignature[0]),
+  16,
+  kSignature,
+  "CramFS",
+  "cramfs",
+  0,
+  CreateArc,
+  0,
+  0
+};
+
+void CHandler::Register() {
+  static bool s_registered = false;
+
+  if(!s_registered) {
+    RegisterArc(&s_arcInfo);
+    s_registered = true;
+  }
+}
 
 }}

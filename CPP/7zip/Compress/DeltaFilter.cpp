@@ -1,43 +1,11 @@
-// DeltaFilter.cpp
+// Compress/DeltaFilter.cpp
 
-#include "StdAfx.h"
-
-#include "../../../C/Delta.h"
-
-#include "../../Common/MyCom.h"
-
-#include "../ICoder.h"
-
-#include "../Common/RegisterCodec.h"
+#include "DeltaFilter.h"
 
 namespace NCompress {
 namespace NDelta {
 
-struct CDelta
-{
-  unsigned _delta;
-  Byte _state[DELTA_STATE_SIZE];
-
-  CDelta(): _delta(1) {}
-  void DeltaInit() { Delta_Init(_state); }
-};
-
-
 #ifndef EXTRACT_ONLY
-
-class CEncoder:
-  public ICompressFilter,
-  public ICompressSetCoderProperties,
-  public ICompressWriteCoderProperties,
-  CDelta,
-  public CMyUnknownImp
-{
-public:
-  MY_UNKNOWN_IMP3(ICompressFilter, ICompressSetCoderProperties, ICompressWriteCoderProperties)
-  INTERFACE_ICompressFilter(;)
-  STDMETHOD(SetCoderProperties)(const PROPID *propIDs, const PROPVARIANT *props, UInt32 numProps);
-  STDMETHOD(WriteCoderProperties)(ISequentialOutStream *outStream);
-};
 
 STDMETHODIMP CEncoder::Init()
 {
@@ -84,20 +52,7 @@ STDMETHODIMP CEncoder::WriteCoderProperties(ISequentialOutStream *outStream)
   return outStream->Write(&prop, 1, NULL);
 }
 
-#endif
-
-
-class CDecoder:
-  public ICompressFilter,
-  public ICompressSetDecoderProperties2,
-  CDelta,
-  public CMyUnknownImp
-{
-public:
-  MY_UNKNOWN_IMP2(ICompressFilter, ICompressSetDecoderProperties2)
-  INTERFACE_ICompressFilter(;)
-  STDMETHOD(SetDecoderProperties2)(const Byte *data, UInt32 size);
-};
+#endif // EXTRACT_ONLY
 
 STDMETHODIMP CDecoder::Init()
 {
@@ -118,11 +73,5 @@ STDMETHODIMP CDecoder::SetDecoderProperties2(const Byte *props, UInt32 size)
   _delta = (unsigned)props[0] + 1;
   return S_OK;
 }
-
-
-REGISTER_FILTER_E(Delta,
-    CDecoder(),
-    CEncoder(),
-    3, "Delta")
 
 }}

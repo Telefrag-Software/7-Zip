@@ -26,7 +26,6 @@ struct CArcInfo
 
 void RegisterArc(const CArcInfo *arcInfo) throw();
 
-
 #define IMP_CreateArcIn_2(c) \
   static IInArchive *CreateArc() { return new c; }
 

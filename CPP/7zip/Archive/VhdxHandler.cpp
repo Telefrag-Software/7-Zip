@@ -16,6 +16,8 @@
 
 #include "HandlerCont.h"
 
+#include "VhdxHandler.h"
+
 #define Get16(p) GetUi16(p)
 #define Get32(p) GetUi32(p)
 #define Get64(p) GetUi64(p)
@@ -57,14 +59,11 @@ static UInt32 MY_FAST_CALL Crc32c_Calc(const void *data, size_t size)
 
 EXTERN_C_END
 
-
 namespace NArchive {
 namespace NVhdx {
 
-static struct C_CRC32c_TableInit { C_CRC32c_TableInit() { Crc32c_GenerateTable(); } } g__CRC32c_TableInit;
-
 #define SIGNATURE { 'v', 'h', 'd', 'x', 'f', 'i', 'l', 'e' }
-  
+
 static const unsigned kSignatureSize = 8;
 static const Byte kSignature[kSignatureSize] = SIGNATURE;
 
@@ -109,45 +108,39 @@ static int DecodeFrom2HexChars(const wchar_t *s)
 }
 
 
-struct CGuid
+bool CGuid::IsZero() const { return IsZeroArr(Data, 16); }
+bool CGuid::IsEqualTo(const Byte *a) const { return memcmp(Data, a, 16) == 0; }
+bool CGuid::IsEqualTo(const CGuid &g) const { return IsEqualTo(g.Data); }
+
+void CGuid::SetFrom(const Byte *p) { memcpy(Data, p, 16); }
+
+bool CGuid::ParseFromFormatedHexString(const UString &s)
 {
-  Byte Data[16];
-
-  bool IsZero() const { return IsZeroArr(Data, 16); }
-  bool IsEqualTo(const Byte *a) const { return memcmp(Data, a, 16) == 0; }
-  bool IsEqualTo(const CGuid &g) const { return IsEqualTo(g.Data); }
-  void AddHexToString(UString &s) const;
-
-  void SetFrom(const Byte *p) { memcpy(Data, p, 16); }
-
-  bool ParseFromFormatedHexString(const UString &s)
+  const unsigned kLen = 16 * 2 + 4 + 2;
+  if (s.Len() != kLen || s[0] != '{' || s[kLen - 1] != '}')
+    return false;
+  unsigned pos = 0;
+  for (unsigned i = 1; i < kLen - 1;)
   {
-    const unsigned kLen = 16 * 2 + 4 + 2;
-    if (s.Len() != kLen || s[0] != '{' || s[kLen - 1] != '}')
-      return false;
-    unsigned pos = 0;
-    for (unsigned i = 1; i < kLen - 1;)
+    if (i == 9 || i == 14 || i == 19 || i == 24)
     {
-      if (i == 9 || i == 14 || i == 19 || i == 24)
-      {
-        if (s[i] != '-')
-          return false;
-        i++;
-        continue;
-      }
-      const int v = DecodeFrom2HexChars(s.Ptr(i));
-      if (v < 0)
+      if (s[i] != '-')
         return false;
-      unsigned pos2 = pos;
-      if (pos < 8)
-        pos2 ^= (pos < 4 ? 3 : 1);
-      Data[pos2] = (Byte)v;
-      pos++;
-      i += 2;
+      i++;
+      continue;
     }
-    return true; // pos == 16;
+    const int v = DecodeFrom2HexChars(s.Ptr(i));
+    if (v < 0)
+      return false;
+    unsigned pos2 = pos;
+    if (pos < 8)
+      pos2 ^= (pos < 4 ? 3 : 1);
+    Data[pos2] = (Byte)v;
+    pos++;
+    i += 2;
   }
-};
+  return true; // pos == 16;
+}
 
 void CGuid::AddHexToString(UString &s) const
 {
@@ -161,18 +154,6 @@ void CGuid::AddHexToString(UString &s) const
 static const unsigned kHeader_GUID_Index_FileWriteGuid = 0;
 static const unsigned kHeader_GUID_Index_DataWriteGuid = 1;
 static const unsigned kHeader_GUID_Index_LogGuid = 2;
-
-struct CHeader
-{
-  UInt64 SequenceNumber;
-  // UInt16 LogVersion;
-  // UInt16 Version;
-  UInt32 LogLength;
-  UInt64 LogOffset;
-  CGuid Guids[3];
-
-  bool Parse(Byte *p);
-};
 
 static const unsigned kHeader2Size = 1 << 12;
 
@@ -209,16 +190,7 @@ static const Byte kBat[16] =
 static const Byte kMetadataRegion[16] =
   { 0x06,0xA2,0x7C,0x8B,0x90,0x47,0x9A,0x4B,0xB8,0xFE,0x57,0x5F,0x05,0x0F,0x88,0x6E };
 
-struct CRegionEntry
-{
-  // CGuid Guid;
-  UInt64 Offset;
-  UInt32 Len;
-  UInt32 Required;
-
-  UInt64 GetEndPos() const { return Offset + Len; }
-  bool Parse(const Byte *p);
-};
+UInt64 CRegionEntry::GetEndPos() const { return Offset + Len; }
 
 bool CRegionEntry::Parse(const Byte *p)
 {
@@ -234,21 +206,6 @@ bool CRegionEntry::Parse(const Byte *p)
     return false;
   return true;
 }
-  
-
-struct CRegion
-{
-  bool Bat_Defined;
-  bool Meta_Defined;
-  UInt64 EndPos;
-  UInt64 DataSize;
-
-  CRegionEntry BatEntry;
-  CRegionEntry MetaEntry;
-
-  bool Parse(Byte *p);
-};
-
 
 static const unsigned kRegionSize = 1 << 16;
 static const unsigned kNumRegionEntriesMax = (1 << 11) - 1;
@@ -313,29 +270,14 @@ bool CRegion::Parse(Byte *p)
   return true;
 }
 
+bool CMetaEntry::IsUser()        const { return (Flags0 & 1) != 0; }
+bool CMetaEntry::IsVirtualDisk() const { return (Flags0 & 2) != 0; }
+bool CMetaEntry::IsRequired()    const { return (Flags0 & 4) != 0; }
 
-
-
-struct CMetaEntry
+bool CMetaEntry::CheckLimit(size_t regionSize) const
 {
-  CGuid Guid;
-  UInt32 Offset;
-  UInt32 Len;
-  UInt32 Flags0;
-  // UInt32 Flags1;
-
-  bool IsUser()        const { return (Flags0 & 1) != 0; }
-  bool IsVirtualDisk() const { return (Flags0 & 2) != 0; }
-  bool IsRequired()    const { return (Flags0 & 4) != 0; }
-
-  bool CheckLimit(size_t regionSize) const
-  {
-    return Offset <= regionSize && Len <= regionSize - Offset;
-  }
-
-  bool Parse(const Byte *p);
-};
-
+  return Offset <= regionSize && Len <= regionSize - Offset;
+}
 
 bool CMetaEntry::Parse(const Byte *p)
 {
@@ -359,63 +301,33 @@ bool CMetaEntry::Parse(const Byte *p)
     return false;
   return true;
 };
-  
 
-struct CParentPair
+int CMetaHeader::FindParentKey(const char *name) const
 {
-  UString Key;
-  UString Value;
-};
+  FOR_VECTOR (i, ParentPairs)
+  {
+    const CParentPair &pair = ParentPairs[i];
+    if (pair.Key.IsEqualTo(name))
+      return i;
+  }
+  return -1;
+}
 
+bool CMetaHeader::Is_LeaveBlockAllocated() const { return (Flags & 1) != 0; }
+bool CMetaHeader::Is_HasParent() const { return (Flags & 2) != 0; }
 
-struct CMetaHeader
+void CMetaHeader::Clear()
 {
-  // UInt16 EntryCount;
-  bool Guid_Defined;
-  bool VirtualDiskSize_Defined;
-  bool Locator_Defined;
-
-  unsigned BlockSize_Log;
-  unsigned LogicalSectorSize_Log;
-  unsigned PhysicalSectorSize_Log;
-
-  UInt32 Flags;
-  UInt64 VirtualDiskSize;
-  CGuid Guid;
-  // CGuid LocatorType;
-
-  CObjectVector<CParentPair> ParentPairs;
-
-  int FindParentKey(const char *name) const
-  {
-    FOR_VECTOR (i, ParentPairs)
-    {
-      const CParentPair &pair = ParentPairs[i];
-      if (pair.Key.IsEqualTo(name))
-        return i;
-    }
-    return -1;
-  }
-
-  bool Is_LeaveBlockAllocated() const { return (Flags & 1) != 0; }
-  bool Is_HasParent() const { return (Flags & 2) != 0; }
-
-  void Clear()
-  {
-    Guid_Defined = false;
-    VirtualDiskSize_Defined = false;
-    Locator_Defined = false;
-    BlockSize_Log = 0;
-    LogicalSectorSize_Log = 0;
-    PhysicalSectorSize_Log = 0;
-    Flags = 0;
-    VirtualDiskSize = 0;
-    ParentPairs.Clear();
-  }
-
-  bool Parse(const Byte *p, size_t size);
-};
-
+  Guid_Defined = false;
+  VirtualDiskSize_Defined = false;
+  Locator_Defined = false;
+  BlockSize_Log = 0;
+  LogicalSectorSize_Log = 0;
+  PhysicalSectorSize_Log = 0;
+  Flags = 0;
+  VirtualDiskSize = 0;
+  ParentPairs.Clear();
+}
 
 static unsigned GetLogSize(UInt32 size)
 {
@@ -599,173 +511,93 @@ bool CMetaHeader::Parse(const Byte *p, size_t size)
   return true;
 }
 
-
-
-struct CBat
+void CBat::Clear() { Data.Free(); }
+UInt64 CBat::GetItem(size_t n) const
 {
-  CByteBuffer Data;
+  return Get64(Data + n * 8);
+}
 
-  void Clear() { Data.Free(); }
-  UInt64 GetItem(size_t n) const
-  {
-    return Get64(Data + n * 8);
-  }
-};
-
-
-
-class CHandler: public CHandlerImg
+void CHandler::UpdatePhySize(UInt64 value)
 {
-  UInt64 _phySize;
+  if (_phySize < value)
+    _phySize = value;
+}
 
-  CBat Bat;
-  CObjectVector<CByteBuffer> BitMaps;
+HRESULT CHandler::Read_FALSE(Byte *data, size_t size)
+{
+  return ReadStream_FALSE(Stream, data, size);
+}
 
-  unsigned ChunkRatio_Log;
-  size_t ChunkRatio;
-  size_t TotalBatEntries;
+HRESULT CHandler::ReadToBuf_FALSE(CByteBuffer &buf, size_t size)
+{
+  buf.Alloc(size);
+  return ReadStream_FALSE(Stream, buf, size);
+}
 
-  CMetaHeader Meta;
-  CHeader Header;
+bool CHandler::IsDiff() const
+{
+  // here we suppose that only HasParent() flag is mandatory for Diff archive type
+  return Meta.Is_HasParent();
+  // return _parentGuid_IsDefined;
+}
 
-  UInt32 NumUsedBlocks;
-  UInt32 NumUsedBitMaps;
-  UInt64 HeadersSize;
-
-  UInt32 NumLevels;
-  UInt64 PackSize_Total;
-
-  /*
-  UInt64 NumUsed_1MB_Blocks; // data and bitmaps
-  bool NumUsed_1MB_Blocks_Defined;
-  */
-
-  CMyComPtr<IInStream> ParentStream;
-  CHandler *Parent;
-  UString _errorMessage;
-  UString _Creator;
-
-  bool _nonEmptyLog;
-  bool _isDataContiguous;
-  // bool _BatOverlap;
-
-  CGuid _parentGuid;
-  bool _parentGuid_IsDefined;
-  UStringVector ParentNames;
-  UString ParentName_Used;
-
-  const CHandler *_child;
-  unsigned _level;
-  bool _isCyclic;
-  bool _isCyclic_or_CyclicParent;
-
-  void AddErrorMessage(const char *message);
-  void AddErrorMessage(const char *message, const wchar_t *name);
-
-  void UpdatePhySize(UInt64 value)
+void CHandler::AddTypeString(AString &s) const
+{
+  if (IsDiff())
+    s += "Differencing";
+  else
   {
-    if (_phySize < value)
-      _phySize = value;
-  }
-
-  HRESULT Seek2(UInt64 offset);
-  HRESULT Read_FALSE(Byte *data, size_t size)
-  {
-    return ReadStream_FALSE(Stream, data, size);
-  }
-  HRESULT ReadToBuf_FALSE(CByteBuffer &buf, size_t size)
-  {
-    buf.Alloc(size);
-    return ReadStream_FALSE(Stream, buf, size);
-  }
-  
-  void InitSeekPositions();
-  HRESULT ReadPhy(UInt64 offset, void *data, UInt32 size, UInt32 &processed);
-
-  bool IsDiff() const
-  {
-    // here we suppose that only HasParent() flag is mandatory for Diff archive type
-    return Meta.Is_HasParent();
-    // return _parentGuid_IsDefined;
-  }
-
-  void AddTypeString(AString &s) const
-  {
-    if (IsDiff())
-      s += "Differencing";
+    if (Meta.Is_LeaveBlockAllocated())
+      s +=  _isDataContiguous ? "fixed" : "fixed-non-cont";
     else
-    {
-      if (Meta.Is_LeaveBlockAllocated())
-        s +=  _isDataContiguous ? "fixed" : "fixed-non-cont";
-      else
-        s += "dynamic";
-    }
+      s += "dynamic";
   }
+}
 
-  void AddComment(UString &s) const;
+UInt64 CHandler::GetPackSize() const
+{
+  return (UInt64)NumUsedBlocks << Meta.BlockSize_Log;
+}
 
-  UInt64 GetPackSize() const
+UString CHandler::GetParentSequence() const
+{
+  const CHandler *p = this;
+  UString res;
+  while (p && p->IsDiff())
   {
-    return (UInt64)NumUsedBlocks << Meta.BlockSize_Log;
+    if (!res.IsEmpty())
+      res += " -> ";
+    res += ParentName_Used;
+    p = p->Parent;
   }
+  return res;
+}
 
-  UString GetParentSequence() const
+bool CHandler::AreParentsOK() const
+{
+  if (_isCyclic_or_CyclicParent)
+    return false;
+  const CHandler *p = this;
+  while (p->IsDiff())
   {
-    const CHandler *p = this;
-    UString res;
-    while (p && p->IsDiff())
-    {
-      if (!res.IsEmpty())
-        res += " -> ";
-      res += ParentName_Used;
-      p = p->Parent;
-    }
-    return res;
-  }
-
-  bool AreParentsOK() const
-  {
-    if (_isCyclic_or_CyclicParent)
+    p = p->Parent;
+    if (!p)
       return false;
-    const CHandler *p = this;
-    while (p->IsDiff())
-    {
-      p = p->Parent;
-      if (!p)
-        return false;
-    }
-    return true;
   }
+  return true;
+}
 
-  // bool ParseLog(CByteBuffer &log);
-  bool ParseBat();
-  bool CheckBat();
-
-  HRESULT Open3();
-  HRESULT Open2(IInStream *stream, IArchiveOpenCallback *openArchiveCallback);
-  HRESULT OpenParent(IArchiveOpenCallback *openArchiveCallback, bool &_parentFileWasOpen);
-  virtual void CloseAtError();
-
-public:
-  INTERFACE_IInArchive_Img(;)
-
-  STDMETHOD(GetStream)(UInt32 index, ISequentialInStream **stream);
-  STDMETHOD(Read)(void *data, UInt32 size, UInt32 *processedSize);
-
-  CHandler():
-    _child(NULL),
-    _level(0),
-    _isCyclic(false),
-    _isCyclic_or_CyclicParent(false)
-    {}
-};
-
+CHandler::CHandler():
+  _child(NULL),
+  _level(0),
+  _isCyclic(false),
+  _isCyclic_or_CyclicParent(false)
+  {}
 
 HRESULT CHandler::Seek2(UInt64 offset)
 {
   return Stream->Seek(offset, STREAM_SEEK_SET, NULL);
 }
-
 
 void CHandler::InitSeekPositions()
 {
@@ -776,7 +608,6 @@ void CHandler::InitSeekPositions()
   if (ParentStream)
     Parent->InitSeekPositions();
 }
-
 
 HRESULT CHandler::ReadPhy(UInt64 offset, void *data, UInt32 size, UInt32 &processed)
 {
@@ -2052,11 +1883,32 @@ STDMETHODIMP CHandler::GetStream(UInt32 /* index */, ISequentialInStream **strea
   COM_TRY_END
 }
 
-REGISTER_ARC_I(
-  "VHDX", "vhdx avhdx", NULL, 0xc4,
+static IInArchive * CreateArc() {
+  return new CHandler();
+}
+
+static const CArcInfo s_arcInfo = {
+  0,
+  0xc4,
+  sizeof(kSignature) / sizeof(kSignature[0]),
+  0,
   kSignature,
+  "VHDX",
+  "vhdx avhdx",
   0,
+  CreateArc,
   0,
-  NULL)
+  0
+};
+
+void CHandler::Register() {
+  static bool s_registered = false;
+
+  if(!s_registered) {
+    Crc32c_GenerateTable();
+    RegisterArc(&s_arcInfo);
+    s_registered = true;
+  }
+}
 
 }}
