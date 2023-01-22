@@ -4,7 +4,7 @@
 
 #include "RegisterArc.h"
 
-namespace NLibrary {
+namespace SevenZip {
 
 HRESULT CreateArchiver(const GUID *clsid, const GUID *iid, void **outObject);
 HRESULT GetHandlerProperty2(UInt32 formatIndex, PROPID propID, PROPVARIANT *value);

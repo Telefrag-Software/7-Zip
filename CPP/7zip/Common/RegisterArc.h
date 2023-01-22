@@ -7,12 +7,6 @@
 
 #define CLS_ARC_ID_ITEM(cls) ((cls).Data4[5])
 
-DEFINE_GUID(CLSID_CArchiveHandler,
-    k_7zip_GUID_Data1,
-    k_7zip_GUID_Data2,
-    k_7zip_GUID_Data3_Common,
-    0x10, 0x00, 0x00, 0x01, 0x10, 0x00, 0x00, 0x00);
-
 struct CArcInfo
 {
   UInt16 Flags;
@@ -50,8 +44,6 @@ inline HRESULT SetPropGUID(const GUID &guid, PROPVARIANT *value)
 {
   return SetPropStrFromBin((const char *)&guid, sizeof(guid), value);
 }
-
-int FindFormatCalssId(const GUID *clsid);
 
 #define IMP_CreateArcIn_2(c) \
   static IInArchive *CreateArc() { return new c; }

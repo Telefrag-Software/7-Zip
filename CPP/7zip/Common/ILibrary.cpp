@@ -1,10 +1,31 @@
 // ILibrary.cpp
 
+#include "../../Windows/NtCheck.h"
+
 #include "ILibrary.h"
+
+DEFINE_GUID(CLSID_CArchiveHandler,
+    k_7zip_GUID_Data1,
+    k_7zip_GUID_Data2,
+    k_7zip_GUID_Data3_Common,
+    0x10, 0x00, 0x00, 0x01, 0x10, 0x00, 0x00, 0x00);
 
 extern bool g_CaseSensitive;
 
-namespace NLibrary {
+int FindFormatCalssId(const GUID *clsid)
+{
+  GUID cls = *clsid;
+  CLS_ARC_ID_ITEM(cls) = 0;
+  if (cls != CLSID_CArchiveHandler)
+    return -1;
+  Byte id = CLS_ARC_ID_ITEM(*clsid);
+  for (unsigned i = 0; i < g_NumArcs; i++)
+    if (g_Arcs[i]->Id == id)
+      return (int)i;
+  return -1;
+}
+
+namespace SevenZip {
 
 HRESULT CreateArchiver(const GUID *clsid, const GUID *iid, void **outObject)
 {
