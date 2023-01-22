@@ -6,6 +6,7 @@
 
 namespace SevenZip {
 
+unsigned ArcCount();
 HRESULT CreateArchiver(const GUID *clsid, const GUID *iid, void **outObject);
 HRESULT GetHandlerProperty2(UInt32 formatIndex, PROPID propID, PROPVARIANT *value);
 HRESULT GetHandlerProperty(PROPID propID, PROPVARIANT *value);

@@ -332,7 +332,6 @@ set(SEVEN_ZIP_CPP_SOURCE_FILES
 	7zip/Common/OutBuffer.cpp
 	7zip/Common/OutMemStream.h
 	7zip/Common/ProgressUtils.cpp
-	7zip/Common/RegisterArc.cpp
 	7zip/Common/RegisterArc.h
 	7zip/Common/StreamBinder.cpp
 	7zip/Common/StreamObjects.h

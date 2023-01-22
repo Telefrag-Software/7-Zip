@@ -3,6 +3,13 @@
 #include "../../Windows/NtCheck.h"
 
 #include "ILibrary.h"
+#include "RegisterArc.h"
+
+static const unsigned kNumArcsMax = 64;
+static unsigned g_NumArcs = 0;
+static unsigned g_DefaultArcIndex = 0;
+static const CArcInfo *g_Arcs[kNumArcsMax];
+extern bool g_CaseSensitive;
 
 DEFINE_GUID(CLSID_CArchiveHandler,
     k_7zip_GUID_Data1,
@@ -10,7 +17,16 @@ DEFINE_GUID(CLSID_CArchiveHandler,
     k_7zip_GUID_Data3_Common,
     0x10, 0x00, 0x00, 0x01, 0x10, 0x00, 0x00, 0x00);
 
-extern bool g_CaseSensitive;
+void RegisterArc(const CArcInfo *arcInfo) throw()
+{
+  if (g_NumArcs < kNumArcsMax)
+  {
+    const char *p = arcInfo->Name;
+    if (p[0] == '7' && p[1] == 'z' && p[2] == 0)
+      g_DefaultArcIndex = g_NumArcs;
+    g_Arcs[g_NumArcs++] = arcInfo;
+  }
+}
 
 int FindFormatCalssId(const GUID *clsid)
 {
@@ -26,6 +42,11 @@ int FindFormatCalssId(const GUID *clsid)
 }
 
 namespace SevenZip {
+
+unsigned ArcCount()
+{
+  return g_NumArcs;
+}
 
 HRESULT CreateArchiver(const GUID *clsid, const GUID *iid, void **outObject)
 {

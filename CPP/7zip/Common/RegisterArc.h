@@ -26,11 +26,6 @@ struct CArcInfo
   bool IsMultiSignature() const { return (Flags & NArcInfoFlags::kMultiSignature) != 0; }
 };
 
-extern const unsigned kNumArcsMax;
-extern unsigned g_NumArcs;
-extern unsigned g_DefaultArcIndex;
-extern const CArcInfo *g_Arcs[];
-
 void RegisterArc(const CArcInfo *arcInfo) throw();
 
 inline HRESULT SetPropStrFromBin(const char *s, unsigned size, PROPVARIANT *value)
