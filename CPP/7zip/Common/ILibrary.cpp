@@ -15,6 +15,8 @@
 #include "../Compress/BcjCoder.h"
 #include "../Compress/Bcj2Coder.h"
 #include "../Compress/BranchMisc.h"
+#include "../Compress/ByteSwap2Filter.h"
+#include "../Compress/ByteSwap4Filter.h"
 #include "../Compress/BZip2Decoder.h"
 #include "../Compress/CopyCoder.h"
 #include "../Compress/DeflateDecoder.h"
@@ -100,6 +102,8 @@ void RegisterFormats() {
   // Register Decoders & Encoders
   NCompress::NBcj2::CEncoder::Register();
   NCompress::NBranch::CCoder::Register();
+  NCompress::NByteSwap::CByteSwap2::Register();
+  NCompress::NByteSwap::CByteSwap4::Register();
   NCompress::NBZip2::CDecoder::Register();
   NCompress::CCopyCoder::Register();
   NCompress::NDeflate::NDecoder::CCOMCoder::Register();
