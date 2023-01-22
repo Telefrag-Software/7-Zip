@@ -514,6 +514,8 @@ set(SEVEN_ZIP_CPP_SOURCE_FILES
 	Common/StringConvert.h
 	Common/TextConfig.h
 	Common/Wildcard.h
+	Common/CksumHasher.cpp
+	Common/CksumHasher.h
 	Common/CksumReg.cpp
 	Common/ComTry.h
 	Common/DynamicBuffer.h
