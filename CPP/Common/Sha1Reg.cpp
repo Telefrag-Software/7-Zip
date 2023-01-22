@@ -12,12 +12,12 @@ UInt32 __stdcall CSha1Hasher::GetDigestSize() throw() {
   return SHA1_DIGEST_SIZE;
 }
 
-static IHasher * CreateHasherSpec() {
+static IHasher * CreateHasherSpecSha1() {
   return new CSha1Hasher();
 }
 
 static const CHasherInfo s_hasherInfo_Sha1 = {
-  CreateHasherSpec,
+  CreateHasherSpecSha1,
   0x201,
   "SHA1",
   SHA1_DIGEST_SIZE
@@ -33,6 +33,5 @@ void CSha1Hasher::Register() {
     s_registered = true;
   }
 }
-
 
 }

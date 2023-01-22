@@ -19,7 +19,6 @@ STDMETHODIMP_(void) CSha1Hasher::Final(Byte *digest) throw()
   Sha1_Final(Sha(), digest);
 }
 
-
 STDMETHODIMP CSha1Hasher::SetCoderProperties(const PROPID *propIDs, const PROPVARIANT *coderProps, UInt32 numProps)
 {
   unsigned algo = 0;

@@ -12,12 +12,12 @@ UInt32 __stdcall CXzCrc64Hasher::GetDigestSize() throw() {
   return 8;
 }
 
-static IHasher * CreateHasherSpec() {
+static IHasher * CreateHasherSpecXzCrc64() {
   return new CXzCrc64Hasher();
 }
 
 static const CHasherInfo s_hasherInfo_XzCrc64 = {
-  CreateHasherSpec,
+  CreateHasherSpecXzCrc64,
   0x4,
   "CRC64",
   8
