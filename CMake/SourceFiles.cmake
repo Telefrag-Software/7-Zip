@@ -465,6 +465,9 @@ set(SEVEN_ZIP_CPP_SOURCE_FILES
 	Common/AutoPtr.h
 	Common/CommandLineParser.cpp
 	Common/CRC.cpp
+	Common/CRCHasher.cpp
+	Common/CRCHasher.h
+	Common/CrcReg.cpp
 	Common/DynLimBuf.cpp
 	Common/Lang.cpp
 	Common/LzFindPrepare.cpp
@@ -479,7 +482,6 @@ set(SEVEN_ZIP_CPP_SOURCE_FILES
 	Common/UTFConvert.h
 	Common/C_FileIO.cpp
 	Common/CommandLineParser.h
-	Common/CrcReg.cpp
 	Common/DynLimBuf.h
 	Common/Lang.h
 	Common/MyBuffer.h
