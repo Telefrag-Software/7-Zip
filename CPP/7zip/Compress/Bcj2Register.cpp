@@ -9,16 +9,36 @@
 namespace NCompress {
 namespace NBcj2 {
 
-REGISTER_CODEC_CREATE_2(CreateCodec, CDecoder(), ICompressCoder2)
+static void * CreateCodec() {
+  return (void *)(ICompressCoder2 *)(new CDecoder());
+}
+
 #ifndef EXTRACT_ONLY
-REGISTER_CODEC_CREATE_2(CreateCodecOut, CEncoder(), ICompressCoder2)
+
+static void * CreateCodecOut() {
+  return (void *)(ICompressCoder2 *)(new CEncoder());
+}
+
 #else
 #define CreateCodecOut NULL
 #endif
 
-REGISTER_CODEC_VAR(BCJ2)
-  { CreateCodec, CreateCodecOut, 0x303011B, "BCJ2", 4, false };
+static const CCodecInfo s_codecInfo_BCJ2 = {
+  CreateCodec,
+  CreateCodecOut,
+  0x303011B,
+  "BCJ2",
+  4,
+  false
+};
 
-REGISTER_CODEC(BCJ2)
+void CEncoder::Register() {
+  static bool s_registered = false;
+
+  if(!s_registered) {
+    RegisterCodec(&s_codecInfo_BCJ2);
+    s_registered = true;
+  }
+}
 
 }}

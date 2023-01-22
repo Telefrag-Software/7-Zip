@@ -8,8 +8,26 @@
 
 namespace NCompress {
 
-REGISTER_CODEC_CREATE(CreateCodec, CCopyCoder())
+static void * CreateCodec() {
+  return (void *)(ICompressCoder *)(new CCopyCoder());
+}
 
-REGISTER_CODEC_2(Copy, CreateCodec, CreateCodec, 0, "Copy")
+static const CCodecInfo s_codecInfo_Copy = {
+  CreateCodec,
+  CreateCodec,
+  0,
+  "Copy",
+  1,
+  false
+};
+
+void CCopyCoder::Register() {
+  static bool s_registered = false;
+
+  if(!s_registered) {
+    RegisterCodec(&s_codecInfo_Copy);
+    s_registered = true;
+  }
+}
 
 }

@@ -1,7 +1,6 @@
 // ILibrary.cpp
 
 #include "../../Windows/NtCheck.h"
-
 #include "../Archive/7z/7zHandler.h"
 #include "../Archive/Cab/CabHandler.h"
 #include "../Archive/Iso/IsoHandler.h"
@@ -9,14 +8,31 @@
 #include "../Archive/Tar/TarHandler.h"
 #include "../Archive/Wim/WimHandler.h"
 #include "../Archive/Zip/ZipHandler.h"
+#include "../Compress/BcjCoder.h"
+#include "../Compress/Bcj2Coder.h"
+#include "../Compress/BranchMisc.h"
+#include "../Compress/BZip2Decoder.h"
+#include "../Compress/CopyCoder.h"
+#include "../Compress/DeflateDecoder.h"
+#include "../Compress/LzmaDecoder.h"
+#include "../Compress/Lzma2Decoder.h"
+#include "../Compress/PpmdDecoder.h"
+#include "../Compress/Rar1Decoder.h"
+#include "../Compress/Rar2Decoder.h"
+#include "../Compress/Rar3Decoder.h"
+#include "../Compress/Rar5Decoder.h"
+#include "../Crypto/7zAes.h"
+#include "../Crypto/MyAes.h"
 
 #include "ILibrary.h"
 #include "RegisterArc.h"
+#include "RegisterCodec.h"
 
 static const unsigned kNumArcsMax = 64;
 static unsigned g_NumArcs = 0;
 static unsigned g_DefaultArcIndex = 0;
 static const CArcInfo *g_Arcs[kNumArcsMax];
+
 extern bool g_CaseSensitive;
 
 void RegisterArc(const CArcInfo *arcInfo) throw()
@@ -66,6 +82,27 @@ int FindFormatCalssId(const GUID *clsid)
 namespace SevenZip {
 
 void RegisterFormats() {
+  // Register Filters
+  NCompress::NBcj::CCoder::Register();
+  NCrypto::N7z::CDecoder::Register();
+  NCrypto::CAesCoder::Register();
+
+  // Register Decoders & Encoders
+  NCompress::NBcj2::CEncoder::Register();
+  NCompress::NBranch::CCoder::Register();
+  NCompress::NBZip2::CDecoder::Register();
+  NCompress::CCopyCoder::Register();
+  NCompress::NDeflate::NDecoder::CCOMCoder::Register();
+  NCompress::NDeflate::NDecoder::CCOMCoder64::Register();
+  NCompress::NLzma::CDecoder::Register();
+  NCompress::NLzma2::CDecoder::Register();
+  NCompress::NPpmd::CDecoder::Register();
+  NCompress::NRar1::CDecoder::Register();
+  NCompress::NRar2::CDecoder::Register();
+  NCompress::NRar3::CDecoder::Register();
+  NCompress::NRar5::CDecoder::Register();
+
+  // Register Archives
   NArchive::N7z::CHandler::Register();
   NArchive::NCab::CHandler::Register();
   NArchive::NIso::CHandler::Register();

@@ -9,9 +9,30 @@
 namespace NCompress {
 namespace NBcj {
 
-REGISTER_FILTER_E(BCJ,
-    CCoder(false),
-    CCoder(true),
-    0x3030103, "BCJ")
+static void * BCJ_CreateDec() {
+  return (void *)(ICompressFilter *)(new CCoder(false));
+}
+
+static void * BCJ_CreateEnc() {
+  return (void *)(ICompressFilter *)(new CCoder(true));
+}
+
+static const CCodecInfo s_codecInfo_BCJ = {
+  BCJ_CreateDec,
+  BCJ_CreateEnc,
+  0x3030103,
+  "BCJ",
+  1,
+  true
+};
+
+void CCoder::Register() {
+  static bool s_registered = false;
+  
+  if(!s_registered) {
+    RegisterCodec(&s_codecInfo_BCJ);
+    s_registered = true;
+  }
+}
 
 }}

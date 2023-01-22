@@ -13,10 +13,31 @@
 namespace NCompress {
 namespace NLzma {
 
-REGISTER_CODEC_E(LZMA,
-    CDecoder(),
-    CEncoder(),
-    0x30101,
-    "LZMA")
+static void * LZMA_CreateDec() {
+  return (void *)(ICompressFilter *)(new CDecoder());
+}
+
+static void * LZMA_CreateEnc() {
+  return (void *)(ICompressFilter *)(new CEncoder());
+}
+
+static const CCodecInfo s_codecInfo_LZMA = {
+  LZMA_CreateDec,
+  LZMA_CreateEnc,
+  0x30101,
+  "LZMA",
+  1,
+  false
+};
+
+void CDecoder::Register() {
+  static bool s_registered = false;
+
+  if(!s_registered) {
+    RegisterCodec(&s_codecInfo_LZMA);
+    s_registered = true;
+  }
+}
+
 
 }}

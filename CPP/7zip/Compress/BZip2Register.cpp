@@ -12,14 +12,36 @@
 namespace NCompress {
 namespace NBZip2 {
 
-REGISTER_CODEC_CREATE(CreateDec, CDecoder)
+static void * CreateDec() {
+  return (void *)(ICompressCoder *)(new CDecoder);
+}
 
 #if !defined(EXTRACT_ONLY) && !defined(BZIP2_EXTRACT_ONLY)
-REGISTER_CODEC_CREATE(CreateEnc, CEncoder)
+
+static void * CreateEnc() {
+  return (void *)(ICompressCoder *)(new CEncoder);
+}
+
 #else
 #define CreateEnc NULL
 #endif
 
-REGISTER_CODEC_2(BZip2, CreateDec, CreateEnc, 0x40202, "BZip2")
+static const CCodecInfo s_codecInfo_BZip2 = {
+  CreateDec,
+  CreateEnc,
+  0x40202,
+  "BZip2",
+  1,
+  false
+};
+
+void CDecoder::Register() {
+  static bool s_registered = false;
+
+  if(!s_registered) {
+    RegisterCodec(&s_codecInfo_BZip2);
+    s_registered = true;
+  }
+}
 
 }}

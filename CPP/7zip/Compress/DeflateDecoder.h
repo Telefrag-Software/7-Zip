@@ -151,8 +151,20 @@ public:
   UInt64 GetInputProcessedSize() const { return m_InBitStream.GetProcessedSize(); }
 };
 
-class CCOMCoder     : public CCoder { public: CCOMCoder(): CCoder(false) {} };
-class CCOMCoder64   : public CCoder { public: CCOMCoder64(): CCoder(true) {} };
+class CCOMCoder     : public CCoder
+{
+public:
+  static void Register();
+
+  CCOMCoder(): CCoder(false) {}
+};
+
+class CCOMCoder64   : public CCoder {
+public:
+  static void Register();
+
+  CCOMCoder64(): CCoder(true) {}
+};
 
 }}}
 

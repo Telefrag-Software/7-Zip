@@ -42,6 +42,7 @@ class CDecoder :
   HRESULT CodeSpec(Byte *memStream, UInt32 size);
 
 public:
+  static void Register();
 
   #ifndef NO_READ_FROM_CODER
   CMyComPtr<ISequentialInStream> InSeqStream;

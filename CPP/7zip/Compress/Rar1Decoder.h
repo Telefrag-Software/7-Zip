@@ -63,6 +63,8 @@ class CDecoder :
       const UInt64 *inSize, const UInt64 *outSize, ICompressProgressInfo *progress);
 
 public:
+  static void Register();
+
   CDecoder();
 
   MY_UNKNOWN_IMP1(ICompressSetDecoderProperties2)
