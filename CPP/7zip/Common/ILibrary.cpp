@@ -19,6 +19,7 @@
 #include "../Compress/ByteSwap4Filter.h"
 #include "../Compress/BZip2Decoder.h"
 #include "../Compress/CopyCoder.h"
+#include "../Compress/DeltaFilter.h"
 #include "../Compress/DeflateDecoder.h"
 #include "../Compress/LzmaDecoder.h"
 #include "../Compress/Lzma2Decoder.h"
@@ -90,6 +91,9 @@ namespace SevenZip {
 void RegisterFormats() {
   // Register Filters
   NCompress::NBcj::CCoder::Register();
+  NCompress::NByteSwap::CByteSwap2::Register();
+  NCompress::NByteSwap::CByteSwap4::Register();
+  NCompress::NDelta::CDecoder::Register();
   NCrypto::N7z::CDecoder::Register();
   NCrypto::CAesCoder::Register();
 
@@ -102,8 +106,6 @@ void RegisterFormats() {
   // Register Decoders & Encoders
   NCompress::NBcj2::CEncoder::Register();
   NCompress::NBranch::CCoder::Register();
-  NCompress::NByteSwap::CByteSwap2::Register();
-  NCompress::NByteSwap::CByteSwap4::Register();
   NCompress::NBZip2::CDecoder::Register();
   NCompress::CCopyCoder::Register();
   NCompress::NDeflate::NDecoder::CCOMCoder::Register();
