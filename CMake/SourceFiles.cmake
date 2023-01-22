@@ -473,7 +473,6 @@ set(SEVEN_ZIP_CPP_SOURCE_FILES
 	Common/MyTypes.h
 	Common/MyWindows.cpp
 	Common/NewHandler.cpp
-	Common/Sha1Prepare.cpp
 	Common/StdAfx.h
 	Common/StdOutStream.h
 	Common/StringToInt.h
@@ -489,6 +488,9 @@ set(SEVEN_ZIP_CPP_SOURCE_FILES
 	Common/MyUnknown.h
 	Common/MyWindows.h
 	Common/NewHandler.h
+	Common/Sha1Hasher.cpp
+	Common/Sha1Hasher.h
+	Common/Sha1Prepare.cpp
 	Common/Sha1Reg.cpp
 	Common/StdInStream.cpp
 	Common/StringConvert.cpp

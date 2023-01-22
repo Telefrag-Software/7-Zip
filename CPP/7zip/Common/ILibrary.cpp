@@ -1,6 +1,7 @@
 // ILibrary.cpp
 
 #include "../../Windows/NtCheck.h"
+#include "../../Common/Sha1Hasher.h"
 #include "../../Common/XzCrc64Hasher.h"
 #include "../Archive/7z/7zHandler.h"
 #include "../Archive/Cab/CabHandler.h"
@@ -89,6 +90,7 @@ void RegisterFormats() {
   NCrypto::CAesCoder::Register();
 
   // Register Hashers
+  NHash::CSha1Hasher::Register();
   NHash::CXzCrc64Hasher::Register();
 
   // Register Decoders & Encoders
