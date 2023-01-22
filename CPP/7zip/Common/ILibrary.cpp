@@ -4,6 +4,7 @@
 #include "../../Common/CksumHasher.h"
 #include "../../Common/CRCHasher.h"
 #include "../../Common/Sha1Hasher.h"
+#include "../../Common/Sha256Hasher.h"
 #include "../../Common/XzCrc64Hasher.h"
 #include "../Archive/7z/7zHandler.h"
 #include "../Archive/Cab/CabHandler.h"
@@ -101,6 +102,7 @@ void RegisterFormats() {
   NHash::CCksumHasher::Register();
   NHash::CCrcHasher::Register();
   NHash::CSha1Hasher::Register();
+  NHash::CSha256Hasher::Register();
   NHash::CXzCrc64Hasher::Register();
 
   // Register Decoders & Encoders

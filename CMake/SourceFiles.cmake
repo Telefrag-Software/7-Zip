@@ -340,9 +340,15 @@ set(SEVEN_ZIP_CPP_SOURCE_FILES
 	7zip/Compress/Bcj2Coder.cpp
 	7zip/Compress/BitlDecoder.h
 	7zip/Compress/ByteSwap.cpp
+	7zip/Compress/ByteSwap2Filter.cpp
+	7zip/Compress/ByteSwap2Filter.h
+	7zip/Compress/ByteSwap4Filter.cpp
+	7zip/Compress/ByteSwap4Filter.h
 	7zip/Compress/BZip2Encoder.h
 	7zip/Compress/Deflate64Register.cpp
 	7zip/Compress/DeltaFilter.cpp
+	7zip/Compress/DeltaFilter.h
+	7zip/Compress/DeltaFilterReg.cpp
 	7zip/Compress/ImplodeHuffmanDecoder.h
 	7zip/Compress/Lzma2Encoder.cpp
 	7zip/Compress/LzmaRegister.cpp
@@ -509,7 +515,10 @@ set(SEVEN_ZIP_CPP_SOURCE_FILES
 	Common/MyVector.cpp
 	Common/MyXml.cpp
 	Common/Random.cpp
+	Common/Sha256Hasher.cpp
+	Common/Sha256Hasher.h
 	Common/Sha256Prepare.cpp
+	Common/Sha256Reg.cpp
 	Common/StdInStream.h
 	Common/StringConvert.h
 	Common/TextConfig.h
@@ -527,7 +536,6 @@ set(SEVEN_ZIP_CPP_SOURCE_FILES
 	Common/MyVector.h
 	Common/MyXml.h
 	Common/Random.h
-	Common/Sha256Reg.cpp
 	Common/StdOutStream.cpp
 	Common/StringToInt.cpp
 	Common/UTFConvert.cpp
