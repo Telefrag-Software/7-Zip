@@ -5,8 +5,6 @@
 
 #include "../Archive/IArchive.h"
 
-#define CLS_ARC_ID_ITEM(cls) ((cls).Data4[5])
-
 struct CArcInfo
 {
   UInt16 Flags;
@@ -27,18 +25,6 @@ struct CArcInfo
 };
 
 void RegisterArc(const CArcInfo *arcInfo) throw();
-
-inline HRESULT SetPropStrFromBin(const char *s, unsigned size, PROPVARIANT *value)
-{
-  if ((value->bstrVal = ::SysAllocStringByteLen(s, size)) != 0)
-    value->vt = VT_BSTR;
-  return S_OK;
-}
-
-inline HRESULT SetPropGUID(const GUID &guid, PROPVARIANT *value)
-{
-  return SetPropStrFromBin((const char *)&guid, sizeof(guid), value);
-}
 
 #define IMP_CreateArcIn_2(c) \
   static IInArchive *CreateArc() { return new c; }

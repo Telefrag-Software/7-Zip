@@ -11,12 +11,6 @@ static unsigned g_DefaultArcIndex = 0;
 static const CArcInfo *g_Arcs[kNumArcsMax];
 extern bool g_CaseSensitive;
 
-DEFINE_GUID(CLSID_CArchiveHandler,
-    k_7zip_GUID_Data1,
-    k_7zip_GUID_Data2,
-    k_7zip_GUID_Data3_Common,
-    0x10, 0x00, 0x00, 0x01, 0x10, 0x00, 0x00, 0x00);
-
 void RegisterArc(const CArcInfo *arcInfo) throw()
 {
   if (g_NumArcs < kNumArcsMax)
@@ -26,6 +20,26 @@ void RegisterArc(const CArcInfo *arcInfo) throw()
       g_DefaultArcIndex = g_NumArcs;
     g_Arcs[g_NumArcs++] = arcInfo;
   }
+}
+
+DEFINE_GUID(CLSID_CArchiveHandler,
+    k_7zip_GUID_Data1,
+    k_7zip_GUID_Data2,
+    k_7zip_GUID_Data3_Common,
+    0x10, 0x00, 0x00, 0x01, 0x10, 0x00, 0x00, 0x00);
+
+#define CLS_ARC_ID_ITEM(cls) ((cls).Data4[5])
+
+static inline HRESULT SetPropStrFromBin(const char *s, unsigned size, PROPVARIANT *value)
+{
+  if ((value->bstrVal = ::SysAllocStringByteLen(s, size)) != 0)
+    value->vt = VT_BSTR;
+  return S_OK;
+}
+
+static inline HRESULT SetPropGUID(const GUID &guid, PROPVARIANT *value)
+{
+  return SetPropStrFromBin((const char *)&guid, sizeof(guid), value);
 }
 
 int FindFormatCalssId(const GUID *clsid)
