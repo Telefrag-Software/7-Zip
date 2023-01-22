@@ -16,13 +16,36 @@ static const Byte k_Signature[] = {
     6, 0x50, 0x4B, 0x07, 0x08, 0x50, 0x4B,   // Span / Descriptor
     6, 0x50, 0x4B, 0x30, 0x30, 0x50, 0x4B }; // NoSpan
 
-REGISTER_ARC_IO(
-  "zip", "zip z01 zipx jar xpi odt ods docx xlsx epub ipa apk appx", 0, 1,
-  k_Signature,
+static IInArchive * CreateArc() {
+  return new CHandler();
+}
+
+static IOutArchive * CreateArcOut() {
+  return new CHandler();
+}
+
+static const CArcInfo s_arcInfo = {
+  NArcInfoFlags::kFindSignature | NArcInfoFlags::kMultiSignature | NArcInfoFlags::kUseGlobalOffset,
+  1,
+  sizeof(k_Signature) / sizeof(k_Signature[0]),
   0,
-  NArcInfoFlags::kFindSignature |
-  NArcInfoFlags::kMultiSignature |
-  NArcInfoFlags::kUseGlobalOffset,
-  IsArc_Zip)
- 
+  k_Signature,
+  "zip",
+  "zip z01 zipx jar xpi odt ods docx xlsx epub ipa apk appx",
+  0,
+  CreateArc,
+  CreateArcOut,
+  IsArc_Zip
+};
+
+void CHandler::Register() {
+  static bool s_registered = false;
+
+  if(!s_registered) {
+    RegisterArc(&s_arcInfo);
+
+    s_registered = true;
+  }
+}
+
 }}

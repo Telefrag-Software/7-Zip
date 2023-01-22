@@ -21,6 +21,8 @@ class CHandler:
   CMyComPtr<IInStream> _stream;
   CInArchive _archive;
 public:
+  static void Register();
+
   MY_UNKNOWN_IMP2(IInArchive, IInArchiveGetStream)
   INTERFACE_IInArchive(;)
   STDMETHOD(GetStream)(UInt32 index, ISequentialInStream **stream);

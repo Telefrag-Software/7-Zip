@@ -82,6 +82,8 @@ class CHandler:
   HRESULT GetOutProperty(IArchiveUpdateCallback *callback, UInt32 callbackIndex, Int32 arcIndex, PROPID propID, PROPVARIANT *value);
   HRESULT        GetTime(IArchiveUpdateCallback *callback, UInt32 callbackIndex, Int32 arcIndex, PROPID propID, FILETIME &ft);
 public:
+  static void Register();
+
   CHandler();
   MY_UNKNOWN_IMP6(
       IInArchive,

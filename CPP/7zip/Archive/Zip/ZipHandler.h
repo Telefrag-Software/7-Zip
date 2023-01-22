@@ -32,6 +32,8 @@ class CHandler:
   public CMyUnknownImp
 {
 public:
+  static void Register();
+
   MY_QUERYINTERFACE_BEGIN2(IInArchive)
   // MY_QUERYINTERFACE_ENTRY(IArchiveGetRawProps)
   MY_QUERYINTERFACE_ENTRY(IOutArchive)

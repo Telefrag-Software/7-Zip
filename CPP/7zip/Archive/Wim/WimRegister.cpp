@@ -9,14 +9,36 @@
 namespace NArchive {
 namespace NWim {
 
-REGISTER_ARC_IO(
-  "wim", "wim swm esd ppkg", 0, 0xE6,
-  kSignature,
+static IInArchive * CreateArc() {
+  return new CHandler();
+}
+
+static IOutArchive * CreateArcOut() {
+  return new CHandler();
+}
+
+static const CArcInfo s_arcInfo = {
+  NArcInfoFlags::kAltStreams | NArcInfoFlags::kNtSecure | NArcInfoFlags::kSymLinks | NArcInfoFlags::kHardLinks,
+  0xE6,
+  sizeof(kSignature) / sizeof(kSignature[0]),
   0,
-  NArcInfoFlags::kAltStreams |
-  NArcInfoFlags::kNtSecure |
-  NArcInfoFlags::kSymLinks |
-  NArcInfoFlags::kHardLinks
-  , NULL)
+  kSignature,
+  "wim",
+  "wim swm esd ppkg",
+  0,
+  CreateArc,
+  CreateArcOut,
+  0
+};
+
+void CHandler::Register() {
+  static bool s_registered = false;
+
+  if(!s_registered) {
+    RegisterArc(&s_arcInfo);
+
+    s_registered = true;
+  }
+}
 
 }}

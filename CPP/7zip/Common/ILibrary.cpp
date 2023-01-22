@@ -2,6 +2,14 @@
 
 #include "../../Windows/NtCheck.h"
 
+#include "../Archive/7z/7zHandler.h"
+#include "../Archive/Cab/CabHandler.h"
+#include "../Archive/Iso/IsoHandler.h"
+#include "../Archive/Nsis/NsisHandler.h"
+#include "../Archive/Tar/TarHandler.h"
+#include "../Archive/Wim/WimHandler.h"
+#include "../Archive/Zip/ZipHandler.h"
+
 #include "ILibrary.h"
 #include "RegisterArc.h"
 
@@ -57,9 +65,14 @@ int FindFormatCalssId(const GUID *clsid)
 
 namespace SevenZip {
 
-unsigned ArcCount()
-{
-  return g_NumArcs;
+void RegisterFormats() {
+  NArchive::N7z::CHandler::Register();
+  NArchive::NCab::CHandler::Register();
+  NArchive::NIso::CHandler::Register();
+  NArchive::NNsis::CHandler::Register();
+  NArchive::NTar::CHandler::Register();
+  NArchive::NWim::CHandler::Register();
+  NArchive::NZip::CHandler::Register();
 }
 
 HRESULT CreateArchiver(const GUID *clsid, const GUID *iid, void **outObject)

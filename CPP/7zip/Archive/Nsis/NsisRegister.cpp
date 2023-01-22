@@ -9,12 +9,32 @@
 namespace NArchive {
 namespace NNsis {
 
-REGISTER_ARC_I(
-  "Nsis", "nsis", 0, 0x9,
-  kSignature,
+static IInArchive * CreateArc() {
+  return new CHandler();
+}
+
+static const CArcInfo s_arcInfo = {
+  NArcInfoFlags::kFindSignature | NArcInfoFlags::kUseGlobalOffset,
+  0x9,
+  sizeof(kSignature) / sizeof(kSignature[0]),
   4,
-  NArcInfoFlags::kFindSignature |
-  NArcInfoFlags::kUseGlobalOffset,
-  NULL)
+  kSignature,
+  "Nsis",
+  "nsis",
+  0,
+  CreateArc,
+  0,
+  0
+};
+
+void CHandler::Register() {
+  static bool s_registered = false;
+
+  if(!s_registered) {
+    RegisterArc(&s_arcInfo);
+
+    s_registered = true;
+  }
+}
 
 }}

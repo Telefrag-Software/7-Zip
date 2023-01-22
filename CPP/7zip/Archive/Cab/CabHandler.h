@@ -17,6 +17,8 @@ class CHandler:
   public CMyUnknownImp
 {
 public:
+  static void Register();
+
   MY_UNKNOWN_IMP1(IInArchive)
 
   INTERFACE_IInArchive(;)
