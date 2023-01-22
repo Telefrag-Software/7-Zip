@@ -478,7 +478,6 @@ set(SEVEN_ZIP_CPP_SOURCE_FILES
 	Common/StdOutStream.h
 	Common/StringToInt.h
 	Common/UTFConvert.h
-	Common/XzCrc64Reg.cpp
 	Common/C_FileIO.cpp
 	Common/CommandLineParser.h
 	Common/CrcReg.cpp
@@ -526,7 +525,10 @@ set(SEVEN_ZIP_CPP_SOURCE_FILES
 	Common/StdOutStream.cpp
 	Common/StringToInt.cpp
 	Common/UTFConvert.cpp
+	Common/XzCrc64Hasher.cpp
+	Common/XzCrc64Hasher.h
 	Common/XzCrc64Init.cpp
+	Common/XzCrc64Reg.cpp
 	Windows/Clipboard.cpp
 	Windows/CommonDialog.cpp
 	Windows/ErrorMsg.cpp

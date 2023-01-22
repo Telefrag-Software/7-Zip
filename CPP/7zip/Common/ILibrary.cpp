@@ -1,6 +1,7 @@
 // ILibrary.cpp
 
 #include "../../Windows/NtCheck.h"
+#include "../../Common/XzCrc64Hasher.h"
 #include "../Archive/7z/7zHandler.h"
 #include "../Archive/Cab/CabHandler.h"
 #include "../Archive/Iso/IsoHandler.h"
@@ -86,6 +87,9 @@ void RegisterFormats() {
   NCompress::NBcj::CCoder::Register();
   NCrypto::N7z::CDecoder::Register();
   NCrypto::CAesCoder::Register();
+
+  // Register Hashers
+  NHash::CXzCrc64Hasher::Register();
 
   // Register Decoders & Encoders
   NCompress::NBcj2::CEncoder::Register();
