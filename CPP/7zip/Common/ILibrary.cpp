@@ -89,7 +89,13 @@ int FindFormatCalssId(const GUID *clsid)
 
 namespace SevenZip {
 
-void RegisterFormats() {
+void Initialize() {
+  static bool s_initialized = false;
+
+  if(s_initialized) {
+    return;
+  }
+
   // Register Filters
   NCompress::NBcj::CCoder::Register();
   NCompress::NByteSwap::CByteSwap2::Register();
@@ -128,10 +134,14 @@ void RegisterFormats() {
   NArchive::NTar::CHandler::Register();
   NArchive::NWim::CHandler::Register();
   NArchive::NZip::CHandler::Register();
+
+  s_initialized = true;
 }
 
 HRESULT CreateArchiver(const GUID *clsid, const GUID *iid, void **outObject)
 {
+  Initialize();
+
   int needIn = (*iid == IID_IInArchive);
   int needOut = (*iid == IID_IOutArchive);
   if (!needIn && !needOut)
@@ -159,6 +169,8 @@ HRESULT CreateArchiver(const GUID *clsid, const GUID *iid, void **outObject)
 
 HRESULT GetHandlerProperty2(UInt32 formatIndex, PROPID propID, PROPVARIANT *value)
 {
+  Initialize();
+
   NWindows::NCOM::PropVariant_Clear(value);
   if (formatIndex >= g_NumArcs)
     return E_INVALIDARG;
@@ -198,17 +210,23 @@ HRESULT GetHandlerProperty2(UInt32 formatIndex, PROPID propID, PROPVARIANT *valu
 
 HRESULT GetHandlerProperty(PROPID propID, PROPVARIANT *value)
 {
+  Initialize();
+
   return GetHandlerProperty2(g_DefaultArcIndex, propID, value);
 }
 
 HRESULT GetNumberOfFormats(UINT32 *numFormats)
 {
+  Initialize();
+
   *numFormats = g_NumArcs;
   return S_OK;
 }
 
 HRESULT GetIsArc(UInt32 formatIndex, Func_IsArc *isArc)
 {
+  Initialize();
+
   *isArc = NULL;
   if (formatIndex >= g_NumArcs)
     return E_INVALIDARG;
@@ -218,11 +236,15 @@ HRESULT GetIsArc(UInt32 formatIndex, Func_IsArc *isArc)
 
 HRESULT CreateObject(const GUID *clsid, const GUID *iid, void **outObject)
 {
+  Initialize();
+
   return CreateArchiver(clsid, iid, outObject);
 }
 
 HRESULT SetLargePageMode()
 {
+  Initialize();
+
   #if defined(_7ZIP_LARGE_PAGES)
   SetLargePageSize();
   #endif
@@ -231,6 +253,8 @@ HRESULT SetLargePageMode()
 
 HRESULT SetCaseSensitive(Int32 caseSensitive)
 {
+  Initialize();
+
   g_CaseSensitive = (caseSensitive != 0);
   return S_OK;
 }
