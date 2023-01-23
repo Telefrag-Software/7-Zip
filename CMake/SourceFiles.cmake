@@ -134,6 +134,7 @@ set(SEVEN_ZIP_CPP_SOURCE_FILES
 	7zip/Archive/XzHandler.h
 	7zip/Archive/ArjHandler.cpp
 	7zip/Archive/CramfsHandler.cpp
+	7zip/Archive/CramfsHandler.h
 	7zip/Archive/FatHandler.cpp
 	7zip/Archive/HandlerCont.cpp
 	7zip/Archive/LzmaHandler.cpp
@@ -149,6 +150,7 @@ set(SEVEN_ZIP_CPP_SOURCE_FILES
 	7zip/Archive/ComHandler.h
 	7zip/Archive/DeflateProps.cpp
 	7zip/Archive/DmgHandler.cpp
+	7zip/Archive/DmgHandler.h
 	7zip/Archive/FlvHandler.cpp
 	7zip/Archive/HandlerCont.h
 	7zip/Archive/IhexHandler.cpp
