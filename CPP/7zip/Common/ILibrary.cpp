@@ -6,6 +6,7 @@
 #include "../../Common/Sha1Hasher.h"
 #include "../../Common/Sha256Hasher.h"
 #include "../../Common/XzCrc64Hasher.h"
+#include "../Archive/ApmHandler.h"
 #include "../Archive/7z/7zHandler.h"
 #include "../Archive/Cab/CabHandler.h"
 #include "../Archive/Iso/IsoHandler.h"
@@ -128,6 +129,7 @@ void Initialize() {
 
   // Register Archives
   NArchive::N7z::CHandler::Register();
+  NArchive::NApm::CHandler::Register();
   NArchive::NCab::CHandler::Register();
   NArchive::NIso::CHandler::Register();
   NArchive::NNsis::CHandler::Register();

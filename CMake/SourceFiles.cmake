@@ -116,6 +116,7 @@ set(SEVEN_ZIP_CPP_SOURCE_FILES
 	7zip/Archive/VhdxHandler.cpp
 	7zip/Archive/XzHandler.cpp
 	7zip/Archive/ApmHandler.cpp
+	7zip/Archive/ApmHandler.h
 	7zip/Archive/ArHandler.cpp
 	7zip/Archive/CpioHandler.cpp
 	7zip/Archive/ExtHandler.cpp
