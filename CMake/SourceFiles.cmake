@@ -138,6 +138,7 @@ set(SEVEN_ZIP_CPP_SOURCE_FILES
 	7zip/Archive/CramfsHandler.cpp
 	7zip/Archive/CramfsHandler.h
 	7zip/Archive/FatHandler.cpp
+	7zip/Archive/FatHandler.h
 	7zip/Archive/HandlerCont.cpp
 	7zip/Archive/LzmaHandler.cpp
 	7zip/Archive/MslzHandler.cpp
