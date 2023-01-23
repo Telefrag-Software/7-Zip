@@ -10,6 +10,7 @@
 #include "../Archive/ArHandler.h"
 #include "../Archive/Base64Handler.h"
 #include "../Archive/Bz2Handler.h"
+#include "../Archive/ComHandler.h"
 #include "../Archive/7z/7zHandler.h"
 #include "../Archive/Cab/CabHandler.h"
 #include "../Archive/Iso/IsoHandler.h"
@@ -136,6 +137,7 @@ void Initialize() {
   NArchive::NAr::CHandler::Register();
   NArchive::NBase64::CHandler::Register();
   NArchive::NBz2::CHandler::Register();
+  NArchive::NCom::CHandler::Register();
   NArchive::NCab::CHandler::Register();
   NArchive::NIso::CHandler::Register();
   NArchive::NNsis::CHandler::Register();

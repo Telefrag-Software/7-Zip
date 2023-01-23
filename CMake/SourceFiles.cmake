@@ -145,6 +145,7 @@ set(SEVEN_ZIP_CPP_SOURCE_FILES
 	7zip/Archive/Base64Handler.cpp
 	7zip/Archive/Base64Handler.h
 	7zip/Archive/ComHandler.cpp
+	7zip/Archive/ComHandler.h
 	7zip/Archive/DeflateProps.cpp
 	7zip/Archive/DmgHandler.cpp
 	7zip/Archive/FlvHandler.cpp
