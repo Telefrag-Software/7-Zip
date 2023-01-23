@@ -22,6 +22,8 @@
 
 #include "Common/ItemNameUtils.h"
 
+#include "ArHandler.h"
+
 using namespace NWindows;
 using namespace NTime;
 
@@ -69,75 +71,12 @@ static const unsigned kSizeSize = 10;
 
 static const unsigned kHeaderSize = kNameSize + kTimeSize + kUserSize * 2 + kModeSize + kSizeSize + 1 + 1;
 
-enum EType
-{
-  kType_Ar,
-  kType_ALib,
-  kType_Deb,
-  kType_Lib
-};
-
 static const char * const k_TypeExtionsions[] =
 {
     "ar"
   , "a"
   , "deb"
   , "lib"
-};
-
-enum ESubType
-{
-  kSubType_None,
-  kSubType_BSD
-};
-
-/*
-struct CHeader
-{
-  char Name[kNameSize];
-  char MTime[kTimeSize];
-  char User[kUserSize];
-  char Group[kUserSize];
-  char Mode[kModeSize];
-  char Size[kSizeSize];
-  char Quote;
-  char NewLine;
-};
-*/
-
-struct CItem
-{
-  AString Name;
-  UInt64 Size;
-  UInt32 MTime;
-  UInt32 User;
-  UInt32 Group;
-  UInt32 Mode;
-  
-  UInt64 HeaderPos;
-  UInt64 HeaderSize;
-
-  int TextFileIndex;
-  int SameNameIndex;
-
-  CItem(): TextFileIndex(-1), SameNameIndex(-1) {}
-  UInt64 GetDataPos() const { return HeaderPos + HeaderSize; }
-};
-
-class CInArchive
-{
-  CMyComPtr<IInStream> m_Stream;
-  
-public:
-  UInt64 Position;
-  ESubType SubType;
-  
-  HRESULT GetNextItem(CItem &itemInfo, bool &filled);
-  HRESULT Open(IInStream *inStream);
-  HRESULT SkipData(UInt64 dataSize)
-  {
-    return m_Stream->Seek(dataSize + (dataSize & 1), STREAM_SEEK_CUR, &Position);
-  }
 };
 
 HRESULT CInArchive::Open(IInStream *inStream)
@@ -271,38 +210,6 @@ HRESULT CInArchive::GetNextItem(CItem &item, bool &filled)
   filled = true;
   return S_OK;
 }
-
-class CHandler:
-  public IInArchive,
-  public IInArchiveGetStream,
-  public CMyUnknownImp
-{
-  CObjectVector<CItem> _items;
-  CMyComPtr<IInStream> _stream;
-  Int32 _mainSubfile;
-  UInt64 _phySize;
-
-  EType _type;
-  ESubType _subType;
-  int _longNames_FileIndex;
-  AString _libFiles[2];
-  unsigned _numLibFiles;
-  AString _errorMessage;
-  bool _isArc;
-  
-
-  void UpdateErrorMessage(const char *s);
-  
-  HRESULT ParseLongNames(IInStream *stream);
-  void ChangeDuplicateNames();
-  int FindItem(UInt32 offset) const;
-  HRESULT AddFunc(UInt32 offset, const Byte *data, size_t size, size_t &pos);
-  HRESULT ParseLibSymbols(IInStream *stream, unsigned fileIndex);
-public:
-  MY_UNKNOWN_IMP2(IInArchive, IInArchiveGetStream)
-  INTERFACE_IInArchive(;)
-  STDMETHOD(GetStream)(UInt32 index, ISequentialInStream **stream);
-};
 
 void CHandler::UpdateErrorMessage(const char *s)
 {
@@ -846,11 +753,33 @@ STDMETHODIMP CHandler::GetStream(UInt32 index, ISequentialInStream **stream)
   COM_TRY_END
 }
 
-REGISTER_ARC_I(
-  "Ar", "ar a deb udeb lib", 0, 0xEC,
+static IInArchive * CreateArc() {
+  return new CHandler();
+}
+
+static const CArcInfo s_arcInfo = {
+  0,
+  0xEC,
+  sizeof(kSignature) / sizeof(kSignature[0]),
+  0,
   kSignature,
+  "Ar",
+  "ar a deb udeb lib",
   0,
+  CreateArc,
   0,
-  NULL)
+  0
+};
+
+void CHandler::Register() {
+  static bool s_registered = false;
+
+  if(!s_registered) {
+    RegisterArc(&s_arcInfo);
+
+    s_registered = true;
+  }
+}
+
 
 }}

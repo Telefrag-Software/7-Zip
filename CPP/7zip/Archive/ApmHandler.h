@@ -1,7 +1,7 @@
 // ApmHandler.h
 
-#ifndef __APM_HANDLER_H_
-#define __APM_HANDLER_H_
+#ifndef __APM_HANDLER_H
+#define __APM_HANDLER_H
 
 #include "../../Common/MyVector.h"
 #include "HandlerCont.h"
@@ -57,4 +57,4 @@ public:
 
 }}
 
-#endif // __APM_HANDLER_H_
+#endif // __APM_HANDLER_H
