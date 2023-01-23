@@ -18,6 +18,8 @@
 #include "../Common/StreamObjects.h"
 #include "../Common/StreamUtils.h"
 
+#include "FlvHandler.h"
+
 #define GetBe24(p) ( \
     ((UInt32)((const Byte *)(p))[0] << 16) | \
     ((UInt32)((const Byte *)(p))[1] <<  8) | \
@@ -43,45 +45,7 @@ static const Byte kType_Video = 9;
 static const Byte kType_Meta = 18;
 static const unsigned kNumTypes = 19;
 
-struct CItem
-{
-  CByteBuffer Data;
-  Byte Type;
-};
-
-struct CItem2
-{
-  Byte Type;
-  Byte SubType;
-  Byte Props;
-  bool SameSubTypes;
-  unsigned NumChunks;
-  size_t Size;
-
-  CReferenceBuf *BufSpec;
-  CMyComPtr<IUnknown> RefBuf;
-
-  bool IsAudio() const { return Type == kType_Audio; }
-};
-
-class CHandler:
-  public IInArchive,
-  public IInArchiveGetStream,
-  public CMyUnknownImp
-{
-  CMyComPtr<IInStream> _stream;
-  CObjectVector<CItem2> _items2;
-  CByteBuffer _metadata;
-  bool _isRaw;
-  UInt64 _phySize;
-
-  HRESULT Open2(IInStream *stream, IArchiveOpenCallback *callback);
-  // AString GetComment();
-public:
-  MY_UNKNOWN_IMP2(IInArchive, IInArchiveGetStream)
-  INTERFACE_IInArchive(;)
-  STDMETHOD(GetStream)(UInt32 index, ISequentialInStream **stream);
-};
+bool CItem2::IsAudio() const { return Type == kType_Audio; }
 
 static const Byte kProps[] =
 {
@@ -516,11 +480,31 @@ STDMETHODIMP CHandler::GetStream(UInt32 index, ISequentialInStream **stream)
 
 static const Byte k_Signature[] = { 'F', 'L', 'V', 1, };
 
-REGISTER_ARC_I(
-  "FLV", "flv", 0, 0xD6,
+static IInArchive * CreateArc() {
+  return new CHandler();
+}
+
+static const CArcInfo s_arcInfo = {
+  0,
+  0xD6,
+  sizeof(k_Signature) / sizeof(k_Signature[0]),
+  0,
   k_Signature,
+  "FLV",
+  "flv",
   0,
+  CreateArc,
   0,
-  NULL)
+  0
+};
+
+void CHandler::Register() {
+  static bool s_registered = false;
+
+  if(!s_registered) {
+    RegisterArc(&s_arcInfo);
+    s_registered = true;
+  }
+}
 
 }}

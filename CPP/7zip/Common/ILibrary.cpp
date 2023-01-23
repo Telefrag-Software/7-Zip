@@ -16,6 +16,7 @@
 #include "../Archive/DmgHandler.h"
 #include "../Archive/ElfHandler.h"
 #include "../Archive/ExtHandler.h"
+#include "../Archive/FlvHandler.h"
 #include "../Archive/7z/7zHandler.h"
 #include "../Archive/Cab/CabHandler.h"
 #include "../Archive/Iso/IsoHandler.h"
@@ -149,6 +150,7 @@ void Initialize() {
   NArchive::NDmg::CHandler::Register();
   NArchive::NElf::CHandler::Register();
   NArchive::NExt::CHandler::Register();
+  NArchive::NFlv::CHandler::Register();
   NArchive::NIso::CHandler::Register();
   NArchive::NNsis::CHandler::Register();
   NArchive::NTar::CHandler::Register();
