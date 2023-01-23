@@ -19,6 +19,7 @@
 #include "../Archive/FatHandler.h"
 #include "../Archive/FlvHandler.h"
 #include "../Archive/GptHandler.h"
+#include "../Archive/GzHandler.h"
 #include "../Archive/7z/7zHandler.h"
 #include "../Archive/Cab/CabHandler.h"
 #include "../Archive/Iso/IsoHandler.h"
@@ -155,6 +156,7 @@ void Initialize() {
   NArchive::NFat::CHandler::Register();
   NArchive::NFlv::CHandler::Register();
   NArchive::NGpt::CHandler::Register();
+  NArchive::NGz::CHandler::Register();
   NArchive::NIso::CHandler::Register();
   NArchive::NNsis::CHandler::Register();
   NArchive::NTar::CHandler::Register();
