@@ -12,6 +12,7 @@
 #include "../Archive/Bz2Handler.h"
 #include "../Archive/ComHandler.h"
 #include "../Archive/CpioHandler.h"
+#include "../Archive/CramfsHandler.h"
 #include "../Archive/7z/7zHandler.h"
 #include "../Archive/Cab/CabHandler.h"
 #include "../Archive/Iso/IsoHandler.h"
@@ -141,6 +142,7 @@ void Initialize() {
   NArchive::NCab::CHandler::Register();
   NArchive::NCom::CHandler::Register();
   NArchive::NCpio::CHandler::Register();
+  NArchive::NCramfs::CHandler::Register();
   NArchive::NIso::CHandler::Register();
   NArchive::NNsis::CHandler::Register();
   NArchive::NTar::CHandler::Register();
