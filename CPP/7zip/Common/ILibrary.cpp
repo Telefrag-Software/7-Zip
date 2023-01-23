@@ -8,6 +8,7 @@
 #include "../../Common/XzCrc64Hasher.h"
 #include "../Archive/ApmHandler.h"
 #include "../Archive/ArHandler.h"
+#include "../Archive/Base64Handler.h"
 #include "../Archive/7z/7zHandler.h"
 #include "../Archive/Cab/CabHandler.h"
 #include "../Archive/Iso/IsoHandler.h"
@@ -132,6 +133,7 @@ void Initialize() {
   NArchive::N7z::CHandler::Register();
   NArchive::NApm::CHandler::Register();
   NArchive::NAr::CHandler::Register();
+  NArchive::NBase64::CHandler::Register();
   NArchive::NCab::CHandler::Register();
   NArchive::NIso::CHandler::Register();
   NArchive::NNsis::CHandler::Register();
