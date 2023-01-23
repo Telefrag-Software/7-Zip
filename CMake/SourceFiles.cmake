@@ -111,6 +111,7 @@ set(SEVEN_ZIP_CPP_SOURCE_FILES
 	7zip/Archive/ElfHandler.cpp
 	7zip/Archive/ElfHandler.h
 	7zip/Archive/GptHandler.cpp
+	7zip/Archive/GptHandler.h
 	7zip/Archive/HfsHandler.cpp
 	7zip/Archive/makefile
 	7zip/Archive/QcowHandler.cpp

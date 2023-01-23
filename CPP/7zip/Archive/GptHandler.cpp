@@ -16,6 +16,8 @@
 
 #include "HandlerCont.h"
 
+#include "GptHandler.h"
+
 #define Get16(p) GetUi16(p)
 #define Get32(p) GetUi32(p)
 #define Get64(p) GetUi64(p)
@@ -26,7 +28,7 @@ namespace NArchive {
 namespace NGpt {
 
 #define SIGNATURE { 'E', 'F', 'I', ' ', 'P', 'A', 'R', 'T', 0, 0, 1, 0 }
-  
+
 static const unsigned k_SignatureSize = 12;
 static const Byte k_Signature[k_SignatureSize] = SIGNATURE;
 
@@ -42,47 +44,27 @@ static const CUInt32PCharPair g_PartitionFlags[] =
   { 63, "Win-Not-Automount" }
 };
 
-static const unsigned kNameLen = 36;
-
-struct CPartition
+bool CPartition::IsUnused() const
 {
-  Byte Type[16];
-  Byte Id[16];
-  UInt64 FirstLba;
-  UInt64 LastLba;
-  UInt64 Flags;
-  Byte Name[kNameLen * 2];
+  for (unsigned i = 0; i < 16; i++)
+    if (Type[i] != 0)
+      return false;
+  return true;
+}
 
-  bool IsUnused() const
-  {
-    for (unsigned i = 0; i < 16; i++)
-      if (Type[i] != 0)
-        return false;
-    return true;
-  }
+UInt64 CPartition::GetSize() const { return (LastLba - FirstLba + 1) * kSectorSize; }
+UInt64 CPartition::GetPos() const { return FirstLba * kSectorSize; }
+UInt64 CPartition::GetEnd() const { return (LastLba + 1) * kSectorSize; }
 
-  UInt64 GetSize() const { return (LastLba - FirstLba + 1) * kSectorSize; }
-  UInt64 GetPos() const { return FirstLba * kSectorSize; }
-  UInt64 GetEnd() const { return (LastLba + 1) * kSectorSize; }
-
-  void Parse(const Byte *p)
-  {
-    memcpy(Type, p, 16);
-    memcpy(Id, p + 16, 16);
-    FirstLba = Get64(p + 32);
-    LastLba = Get64(p + 40);
-    Flags = Get64(p + 48);
-    memcpy(Name, p + 56, kNameLen * 2);
-  }
-};
-
-
-struct CPartType
+void CPartition::Parse(const Byte *p)
 {
-  UInt32 Id;
-  const char *Ext;
-  const char *Type;
-};
+  memcpy(Type, p, 16);
+  memcpy(Id, p + 16, 16);
+  FirstLba = Get64(p + 32);
+  LastLba = Get64(p + 40);
+  Flags = Get64(p + 48);
+  memcpy(Name, p + 56, kNameLen * 2);
+}
 
 static const CPartType kPartTypes[] =
 {
@@ -131,29 +113,13 @@ static void RawLeGuidToString_Upper(const Byte *g, char *s)
   // MyStringUpper_Ascii(s);
 }
 
-
-class CHandler: public CHandlerCont
+int CHandler::GetItem_ExtractInfo(UInt32 index, UInt64 &pos, UInt64 &size) const
 {
-  CRecordVector<CPartition> _items;
-  UInt64 _totalSize;
-  Byte Guid[16];
-
-  CByteBuffer _buffer;
-
-  HRESULT Open2(IInStream *stream);
-
-  virtual int GetItem_ExtractInfo(UInt32 index, UInt64 &pos, UInt64 &size) const
-  {
-    const CPartition &item = _items[index];
-    pos = item.GetPos();
-    size = item.GetSize();
-    return NExtract::NOperationResult::kOK;
-  }
-
-public:
-  INTERFACE_IInArchive_Cont(;)
-};
-
+  const CPartition &item = _items[index];
+  pos = item.GetPos();
+  size = item.GetSize();
+  return NExtract::NOperationResult::kOK;
+}
 
 HRESULT CHandler::Open2(IInStream *stream)
 {
@@ -403,11 +369,31 @@ STDMETHODIMP CHandler::GetProperty(UInt32 index, PROPID propID, PROPVARIANT *val
   COM_TRY_END
 }
 
-REGISTER_ARC_I(
-  "GPT", "gpt mbr", NULL, 0xCB,
-  k_Signature,
-  kSectorSize,
+static IInArchive * CreateArc() {
+  return new CHandler();
+}
+
+static const CArcInfo s_arcInfo = {
   0,
-  NULL)
+  0xCB,
+  sizeof(k_Signature) / sizeof(k_Signature[0]),
+  kSectorSize,
+  k_Signature,
+  "GPT",
+  "gpt mbr",
+  0,
+  CreateArc,
+  0,
+  0
+};
+
+void CHandler::Register() {
+  static bool s_registered = false;
+
+  if(!s_registered) {
+    RegisterArc(&s_arcInfo);
+    s_registered = true;
+  }
+}
 
 }}
