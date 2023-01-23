@@ -5,7 +5,6 @@
 #include "../../../C/CpuArch.h"
 
 #include "../../Common/ComTry.h"
-#include "../../Common/MyLinux.h"
 #include "../../Common/StringConvert.h"
 #include "../../Common/StringToInt.h"
 #include "../../Common/UTFConvert.h"
@@ -22,6 +21,8 @@
 
 #include "Common/ItemNameUtils.h"
 
+#include "CpioHandler.h"
+
 using namespace NWindows;
 
 namespace NArchive {
@@ -35,8 +36,6 @@ static const Byte kMagicBin1 = 0x71;
 static const Byte kMagicHex    = '1'; // New ASCII Format
 static const Byte kMagicHexCrc = '2'; // New CRC Format
 static const Byte kMagicOct    = '7'; // Portable ASCII Format
-
-static const char * const kName_TRAILER = "TRAILER!!!";
 
 static const unsigned k_BinRecord_Size = 2 + 8 * 2 + 2 * 4;
 static const unsigned k_OctRecord_Size = 6 + 8 * 6 + 2 * 11;
@@ -79,15 +78,6 @@ static const unsigned k_RecordSize_Max = k_HexRecord_Size;
   };
 */
 
-enum EType
-{
-  k_Type_BinLe,
-  k_Type_BinBe,
-  k_Type_Oct,
-  k_Type_Hex,
-  k_Type_HexCrc
-};
-
 static const char * const k_Types[] =
 {
     "Binary LE"
@@ -95,52 +85,6 @@ static const char * const k_Types[] =
   , "Portable ASCII"
   , "New ASCII"
   , "New CRC"
-};
-
-struct CItem
-{
-  AString Name;
-  UInt32 inode;
-  UInt32 Mode;
-  UInt32 UID;
-  UInt32 GID;
-  UInt64 Size;
-  UInt32 MTime;
-
-  UInt32 NumLinks;
-  UInt32 DevMajor;
-  UInt32 DevMinor;
-  UInt32 RDevMajor;
-  UInt32 RDevMinor;
-  UInt32 ChkSum;
-
-  UInt32 Align;
-  EType Type;
-
-  UInt32 HeaderSize;
-  UInt64 HeaderPos;
-
-  bool IsBin() const { return Type == k_Type_BinLe || Type == k_Type_BinBe; }
-  bool IsCrcFormat() const { return Type == k_Type_HexCrc; }
-  bool IsDir() const { return MY_LIN_S_ISDIR(Mode); }
-  bool IsTrailer() const { return strcmp(Name, kName_TRAILER) == 0; }
-  UInt64 GetDataPosition() const { return HeaderPos + HeaderSize; }
-};
-
-enum EErrorType
-{
-  k_ErrorType_OK,
-  k_ErrorType_Corrupted,
-  k_ErrorType_UnexpectedEnd
-};
-
-struct CInArchive
-{
-  ISequentialInStream *Stream;
-  UInt64 Processed;
-  
-  HRESULT Read(void *data, size_t *size);
-  HRESULT GetNextItem(CItem &item, EErrorType &errorType);
 };
 
 HRESULT CInArchive::Read(void *data, size_t *size)
@@ -411,23 +355,6 @@ HRESULT CInArchive::GetNextItem(CItem &item, EErrorType &errorType)
   errorType = k_ErrorType_OK;
   return S_OK;
 }
-
-class CHandler:
-  public IInArchive,
-  public IInArchiveGetStream,
-  public CMyUnknownImp
-{
-  CObjectVector<CItem> _items;
-  CMyComPtr<IInStream> _stream;
-  UInt64 _phySize;
-  EType _Type;
-  EErrorType _error;
-  bool _isArc;
-public:
-  MY_UNKNOWN_IMP2(IInArchive, IInArchiveGetStream)
-  INTERFACE_IInArchive(;)
-  STDMETHOD(GetStream)(UInt32 index, ISequentialInStream **stream);
-};
 
 static const Byte kArcProps[] =
 {
@@ -799,11 +726,31 @@ static const Byte k_Signature[] = {
     2, kMagicBin0, kMagicBin1,
     2, kMagicBin1, kMagicBin0 };
 
-REGISTER_ARC_I(
-  "Cpio", "cpio", 0, 0xED,
-  k_Signature,
-  0,
+static IInArchive * CreateArc() {
+  return new CHandler();
+}
+
+static const CArcInfo s_arcInfo = {
   NArcInfoFlags::kMultiSignature,
-  IsArc_Cpio)
+  0xED,
+  sizeof(k_Signature) / sizeof(k_Signature[0]),
+  0,
+  k_Signature,
+  "Cpio",
+  "cpio",
+  0,
+  CreateArc,
+  0,
+  IsArc_Cpio
+};
+
+void CHandler::Register() {
+  static bool s_registered = false;
+
+  if(!s_registered) {
+    RegisterArc(&s_arcInfo);
+    s_registered = true;
+  }
+}
 
 }}
