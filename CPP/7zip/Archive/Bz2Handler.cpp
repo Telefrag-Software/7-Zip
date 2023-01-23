@@ -15,51 +15,12 @@
 #include "Common/DummyOutStream.h"
 #include "Common/HandlerOut.h"
 
+#include "Bz2Handler.h"
+
 using namespace NWindows;
 
 namespace NArchive {
 namespace NBz2 {
-
-class CHandler:
-  public IInArchive,
-  public IArchiveOpenSeq,
-  public IOutArchive,
-  public ISetProperties,
-  public CMyUnknownImp
-{
-  CMyComPtr<IInStream> _stream;
-  CMyComPtr<ISequentialInStream> _seqStream;
-  
-  bool _isArc;
-  bool _needSeekToStart;
-  bool _dataAfterEnd;
-  bool _needMoreInput;
-
-  bool _packSize_Defined;
-  bool _unpackSize_Defined;
-  bool _numStreams_Defined;
-  bool _numBlocks_Defined;
-
-  UInt64 _packSize;
-  UInt64 _unpackSize;
-  UInt64 _numStreams;
-  UInt64 _numBlocks;
-
-  CSingleMethodProps _props;
-
-public:
-  MY_UNKNOWN_IMP4(
-      IInArchive,
-      IArchiveOpenSeq,
-      IOutArchive,
-      ISetProperties)
-  INTERFACE_IInArchive(;)
-  INTERFACE_IOutArchive(;)
-  STDMETHOD(OpenSeq)(ISequentialInStream *stream);
-  STDMETHOD(SetProperties)(const wchar_t * const *names, const PROPVARIANT *values, UInt32 numProps);
-
-  CHandler() { }
-};
 
 static const Byte kProps[] =
 {
@@ -406,11 +367,36 @@ STDMETHODIMP CHandler::SetProperties(const wchar_t * const *names, const PROPVAR
 
 static const Byte k_Signature[] = { 'B', 'Z', 'h' };
 
-REGISTER_ARC_IO(
-  "bzip2", "bz2 bzip2 tbz2 tbz", "* * .tar .tar", 2,
-  k_Signature,
-  0,
+static IInArchive * CreateArc() {
+  return new CHandler();
+}
+
+static IOutArchive * CreateArcOut() {
+  return new CHandler();
+}
+
+static const CArcInfo s_arcInfo = {
   NArcInfoFlags::kKeepName,
-  IsArc_BZip2)
+  2,
+  sizeof(k_Signature) / sizeof(k_Signature[0]),
+  0,
+  k_Signature,
+  "bzip2",
+  "bz2 bzip2 tbz2 tbz",
+  "* * .tar .tar",
+  CreateArc,
+  CreateArcOut,
+  IsArc_BZip2
+};
+
+void CHandler::Register() {
+  static bool s_registered = false;
+
+  if(!s_registered) {
+    RegisterArc(&s_arcInfo);
+
+    s_registered = true;
+  }
+}
 
 }}

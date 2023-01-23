@@ -106,6 +106,7 @@ set(SEVEN_ZIP_CPP_SOURCE_FILES
 	7zip/IStream.h
 	7zip/PropID.h
 	7zip/Archive/Bz2Handler.cpp
+	7zip/Archive/Bz2Handler.h
 	7zip/Archive/DeflateProps.h
 	7zip/Archive/ElfHandler.cpp
 	7zip/Archive/GptHandler.cpp
