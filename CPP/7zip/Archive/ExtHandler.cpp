@@ -34,6 +34,8 @@
 
 #include "../Compress/CopyCoder.h"
 
+#include "ExtHandler.h"
+
 using namespace NWindows;
 
 UInt32 LzhCrc16Update(UInt32 crc, const void *data, size_t size);
@@ -248,19 +250,6 @@ static inline void PrintHex(unsigned v, char *s)
   s[1] = GetHex(v & 0xF);
 }
 
-
-enum
-{
-  k_Type_UNKNOWN,
-  k_Type_REG_FILE,
-  k_Type_DIR,
-  k_Type_CHRDEV,
-  k_Type_BLKDEV,
-  k_Type_FIFO,
-  k_Type_SOCK,
-  k_Type_SYMLINK
-};
-
 static const UInt16 k_TypeToMode[] =
 {
   0,
@@ -276,76 +265,16 @@ static const UInt16 k_TypeToMode[] =
 
 #define EXT4_GOOD_OLD_REV 0  // old (original) format
 // #define EXT4_DYNAMIC_REV 1  // V2 format with dynamic inode sizes
- 
-struct CHeader
-{
-  unsigned BlockBits;
-  unsigned ClusterBits;
 
-  UInt32 NumInodes;
-  UInt64 NumBlocks;
-  // UInt64 NumBlocksSuper;
-  UInt64 NumFreeBlocks;
-  UInt32 NumFreeInodes;
-  // UInt32 FirstDataBlock;
+bool CHeader::IsOldRev() const { return RevLevel == EXT4_GOOD_OLD_REV; }
 
-  UInt32 BlocksPerGroup;
-  UInt32 ClustersPerGroup;
-  UInt32 InodesPerGroup;
+UInt64 CHeader::GetNumGroups() const { return (NumBlocks + BlocksPerGroup - 1) / BlocksPerGroup; }
+UInt64 CHeader::GetNumGroups2() const { return ((UInt64)NumInodes + InodesPerGroup - 1) / InodesPerGroup; }
 
-  UInt32 MountTime;
-  UInt32 WriteTime;
-
-  // UInt16 NumMounts;
-  // UInt16 NumMountsMax;
-  
-  // UInt16 State;
-  // UInt16 Errors;
-  // UInt16 MinorRevLevel;
-
-  UInt32 LastCheckTime;
-  // UInt32 CheckInterval;
-  UInt32 CreatorOs;
-  UInt32 RevLevel;
-
-  // UInt16 DefResUid;
-  // UInt16 DefResGid;
-
-  UInt32 FirstInode;
-  UInt16 InodeSize;
-  UInt16 BlockGroupNr;
-  UInt32 FeatureCompat;
-  UInt32 FeatureIncompat;
-  UInt32 FeatureRoCompat;
-  Byte Uuid[16];
-  char VolName[16];
-  char LastMount[64];
-  // UInt32 BitmapAlgo;
-
-  UInt32 JournalInode;
-  UInt16 GdSize; // = 64 if 64-bit();
-  UInt32 CTime;
-  UInt16 MinExtraISize;
-  // UInt16 WantExtraISize;
-  // UInt32 Flags;
-  // Byte LogGroupsPerFlex;
-  // Byte ChecksumType;
-
-  UInt64 WrittenKB;
-
-  bool IsOldRev() const { return RevLevel == EXT4_GOOD_OLD_REV; }
-
-  UInt64 GetNumGroups() const { return (NumBlocks + BlocksPerGroup - 1) / BlocksPerGroup; }
-  UInt64 GetNumGroups2() const { return ((UInt64)NumInodes + InodesPerGroup - 1) / InodesPerGroup; }
-
-  bool IsThereFileType() const { return (FeatureIncompat & EXT4_FEATURE_INCOMPAT_FILETYPE) != 0; }
-  bool Is64Bit() const { return (FeatureIncompat & EXT4_FEATURE_INCOMPAT_64BIT) != 0; }
-  bool UseGdtChecksum() const { return (FeatureRoCompat & RO_COMPAT_GDT_CSUM) != 0; }
-  bool UseMetadataChecksum() const { return (FeatureRoCompat & RO_COMPAT_METADATA_CSUM) != 0; }
-
-  bool Parse(const Byte *p);
-};
-
+bool CHeader::IsThereFileType() const { return (FeatureIncompat & EXT4_FEATURE_INCOMPAT_FILETYPE) != 0; }
+bool CHeader::Is64Bit() const { return (FeatureIncompat & EXT4_FEATURE_INCOMPAT_64BIT) != 0; }
+bool CHeader::UseGdtChecksum() const { return (FeatureRoCompat & RO_COMPAT_GDT_CSUM) != 0; }
+bool CHeader::UseMetadataChecksum() const { return (FeatureRoCompat & RO_COMPAT_METADATA_CSUM) != 0; }
 
 static int inline GetLog(UInt32 num)
 {
@@ -500,27 +429,6 @@ bool CHeader::Parse(const Byte *p)
   return true;
 }
 
-
-struct CGroupDescriptor
-{
-  UInt64 BlockBitmap;
-  UInt64 InodeBitmap;
-  UInt64 InodeTable;
-  UInt32 NumFreeBlocks;
-  UInt32 NumFreeInodes;
-  UInt32 DirCount;
-  
-  UInt16 Flags;
-  
-  UInt64 ExcludeBitmap;
-  UInt32 BlockBitmap_Checksum;
-  UInt32 InodeBitmap_Checksum;
-  UInt32 UnusedCount;
-  UInt16 Checksum;
-
-  void Parse(const Byte *p, unsigned size);
-};
-
 void CGroupDescriptor::Parse(const Byte *p, unsigned size)
 {
   LE_32 (0x00, BlockBitmap);
@@ -553,120 +461,45 @@ void CGroupDescriptor::Parse(const Byte *p, unsigned size)
   }
 }
 
-
-static const unsigned kNodeBlockFieldSize = 60;
-
-struct CExtentTreeHeader
+bool CExtentTreeHeader::Parse(const Byte *p)
 {
-  UInt16 NumEntries;
-  UInt16 MaxEntries;
-  UInt16 Depth;
-  // UInt32 Generation;
+  LE_16 (0x02, NumEntries);
+  LE_16 (0x04, MaxEntries);
+  LE_16 (0x06, Depth);
+  // LE_32 (0x08, Generation);
+  return Get16(p) == 0xF30A; // magic
+}
 
-  bool Parse(const Byte *p)
+void CExtentIndexNode::Parse(const Byte *p)
+{
+  LE_32 (0x00, VirtBlock);
+  LE_32 (0x04, PhyLeaf);
+  PhyLeaf |= (((UInt64)Get16(p + 8)) << 32);
+  // unused 16-bit field (at offset 0x0A) can be not zero in some cases. Why?
+}
+
+void CExtent::Parse(const Byte *p)
+{
+  LE_32 (0x00, VirtBlock);
+  LE_16 (0x04, Len);
+  IsInited = true;
+  if (Len > (UInt32)0x8000)
   {
-    LE_16 (0x02, NumEntries);
-    LE_16 (0x04, MaxEntries);
-    LE_16 (0x06, Depth);
-    // LE_32 (0x08, Generation);
-    return Get16(p) == 0xF30A; // magic
+    IsInited = false;
+    Len = (UInt16)(Len - (UInt32)0x8000);
   }
-};
+  LE_32 (0x08, PhyStart);
+  UInt16 hi;
+  LE_16 (0x06, hi);
+  PhyStart |= ((UInt64)hi << 32);
+}
 
-struct CExtentIndexNode
-{
-  UInt32 VirtBlock;
-  UInt64 PhyLeaf;
+bool CNode::IsFlags_HUGE()    const { return (Flags & k_NodeFlags_HUGE) != 0; }
+bool CNode::IsFlags_EXTENTS() const { return (Flags & k_NodeFlags_EXTENTS) != 0; }
 
-  void Parse(const Byte *p)
-  {
-    LE_32 (0x00, VirtBlock);
-    LE_32 (0x04, PhyLeaf);
-    PhyLeaf |= (((UInt64)Get16(p + 8)) << 32);
-    // unused 16-bit field (at offset 0x0A) can be not zero in some cases. Why?
-  }
-};
-
-struct CExtent
-{
-  UInt32 VirtBlock;
-  UInt16 Len;
-  bool IsInited;
-  UInt64 PhyStart;
-
-  UInt32 GetVirtEnd() const { return VirtBlock + Len; }
-  bool IsLenOK() const { return VirtBlock + Len >= VirtBlock; }
-
-  void Parse(const Byte *p)
-  {
-    LE_32 (0x00, VirtBlock);
-    LE_16 (0x04, Len);
-    IsInited = true;
-    if (Len > (UInt32)0x8000)
-    {
-      IsInited = false;
-      Len = (UInt16)(Len - (UInt32)0x8000);
-    }
-    LE_32 (0x08, PhyStart);
-    UInt16 hi;
-    LE_16 (0x06, hi);
-    PhyStart |= ((UInt64)hi << 32);
-  }
-};
-
-
-
-struct CExtTime
-{
-  UInt32 Val;
-  UInt32 Extra;
-};
-
-struct CNode
-{
-  Int32 ParentNode;   // in _refs[], -1 if not dir
-  int ItemIndex;      // in _items[]
-  int SymLinkIndex;   // in _symLinks[]
-  int DirIndex;       // in _dirs[]
-
-  UInt16 Mode;
-  UInt32 Uid; // fixed 21.02
-  UInt32 Gid; // fixed 21.02
-  // UInt16 Checksum;
-  
-  UInt64 FileSize;
-  CExtTime MTime;
-  CExtTime ATime;
-  CExtTime CTime;
-  // CExtTime InodeChangeTime;
-  // CExtTime DTime;
-
-  UInt64 NumBlocks;
-  UInt32 NumLinks;
-  UInt32 Flags;
-
-  UInt32 NumLinksCalced;
-
-  Byte Block[kNodeBlockFieldSize];
-  
-  CNode():
-      ParentNode(-1),
-      ItemIndex(-1),
-      SymLinkIndex(-1),
-      DirIndex(0),
-      NumLinksCalced(0)
-        {}
-
-  bool IsFlags_HUGE()    const { return (Flags & k_NodeFlags_HUGE) != 0; }
-  bool IsFlags_EXTENTS() const { return (Flags & k_NodeFlags_EXTENTS) != 0; }
-
-  bool IsDir()     const { return MY_LIN_S_ISDIR(Mode); }
-  bool IsRegular() const { return MY_LIN_S_ISREG(Mode); }
-  bool IsLink()    const { return MY_LIN_S_ISLNK(Mode); }
-
-  bool Parse(const Byte *p, const CHeader &_h);
-};
-
+bool CNode::IsDir()     const { return MY_LIN_S_ISDIR(Mode); }
+bool CNode::IsRegular() const { return MY_LIN_S_ISREG(Mode); }
+bool CNode::IsLink()    const { return MY_LIN_S_ISLNK(Mode); }
 
 bool CNode::Parse(const Byte *p, const CHeader &_h)
 {
@@ -755,133 +588,6 @@ bool CNode::Parse(const Byte *p, const CHeader &_h)
 
   return true;
 }
-
-
-struct CItem
-{
-  unsigned Node;        // in _refs[]
-  int ParentNode;       // in _refs[]
-  int SymLinkItemIndex; // in _items[], if the Node contains SymLink to existing dir
-  Byte Type;
-  
-  AString Name;
-
-  CItem():
-      Node(0),
-      ParentNode(-1),
-      SymLinkItemIndex(-1),
-      Type(k_Type_UNKNOWN)
-        {}
-  
-  void Clear()
-  {
-    Node = 0;
-    ParentNode = -1;
-    SymLinkItemIndex = -1;
-    Type = k_Type_UNKNOWN;
-    Name.Empty();
-  }
-
-  bool IsDir() const { return Type == k_Type_DIR; }
-  // bool IsNotDir() const { return Type != k_Type_DIR && Type != k_Type_UNKNOWN; }
-
-};
-
-
-
-static const unsigned kNumTreeLevelsMax = 6; // must be >= 3
-
-
-class CHandler:
-  public IInArchive,
-  public IArchiveGetRawProps,
-  public IInArchiveGetStream,
-  public CMyUnknownImp
-{
-  CObjectVector<CItem> _items;
-  CIntVector _refs;
-  CRecordVector<CNode> _nodes;
-  CObjectVector<CUIntVector> _dirs; // each CUIntVector contains indexes in _items[] only for dir items;
-  AStringVector _symLinks;
-  AStringVector _auxItems;
-  int _auxSysIndex;
-  int _auxUnknownIndex;
-
-  CMyComPtr<IInStream> _stream;
-  UInt64 _phySize;
-  bool _isArc;
-  bool _headersError;
-  bool _headersWarning;
-  bool _linksError;
-  
-  bool _isUTF;
-  
-  CHeader _h;
-
-  IArchiveOpenCallback *_openCallback;
-  UInt64 _totalRead;
-  UInt64 _totalReadPrev;
-
-  CByteBuffer _tempBufs[kNumTreeLevelsMax];
-
-  
-  HRESULT CheckProgress2()
-  {
-    const UInt64 numFiles = _items.Size();
-    return _openCallback->SetCompleted(&numFiles, &_totalRead);
-  }
-
-  HRESULT CheckProgress()
-  {
-    HRESULT res = S_OK;
-    if (_openCallback)
-    {
-      if (_totalRead - _totalReadPrev >= ((UInt32)1 << 20))
-      {
-        _totalReadPrev = _totalRead;
-        res = CheckProgress2();
-      }
-    }
-    return res;
-  }
-
-  
-  int GetParentAux(const CItem &item) const
-  {
-    if (item.Node < _h.FirstInode && _auxSysIndex >= 0)
-      return _auxSysIndex;
-    return _auxUnknownIndex;
-  }
-
-  HRESULT SeekAndRead(IInStream *inStream, UInt64 block, Byte *data, size_t size);
-  HRESULT ParseDir(const Byte *data, size_t size, unsigned iNodeDir);
-  int FindTargetItem_for_SymLink(unsigned dirNode, const AString &path) const;
-
-  HRESULT FillFileBlocks2(UInt32 block, unsigned level, unsigned numBlocks, CRecordVector<UInt32> &blocks);
-  HRESULT FillFileBlocks(const Byte *p, unsigned numBlocks, CRecordVector<UInt32> &blocks);
-  HRESULT FillExtents(const Byte *p, size_t size, CRecordVector<CExtent> &extents, int parentDepth);
-
-  HRESULT GetStream_Node(unsigned nodeIndex, ISequentialInStream **stream);
-  HRESULT ExtractNode(unsigned nodeIndex, CByteBuffer &data);
-
-  void ClearRefs();
-  HRESULT Open2(IInStream *inStream);
-
-  void GetPath(unsigned index, AString &s) const;
-  bool GetPackSize(unsigned index, UInt64 &res) const;
-
-public:
-  CHandler() {}
-  ~CHandler() {}
-
-  MY_UNKNOWN_IMP3(IInArchive, IArchiveGetRawProps, IInArchiveGetStream)
-  
-  INTERFACE_IInArchive(;)
-  INTERFACE_IArchiveGetRawProps(;)
-  STDMETHOD(GetStream)(UInt32 index, ISequentialInStream **stream);
-};
-
-
 
 HRESULT CHandler::ParseDir(const Byte *p, size_t size, unsigned iNodeDir)
 {
@@ -2135,42 +1841,6 @@ STDMETHODIMP CHandler::GetProperty(UInt32 index, PROPID propID, PROPVARIANT *val
   COM_TRY_END
 }
 
-
-class CClusterInStream2:
-  public IInStream,
-  public CMyUnknownImp
-{
-  UInt64 _virtPos;
-  UInt64 _physPos;
-  UInt32 _curRem;
-public:
-  unsigned BlockBits;
-  UInt64 Size;
-  CMyComPtr<IInStream> Stream;
-  CRecordVector<UInt32> Vector;
-
-  HRESULT SeekToPhys() { return Stream->Seek(_physPos, STREAM_SEEK_SET, NULL); }
-
-  HRESULT InitAndSeek()
-  {
-    _curRem = 0;
-    _virtPos = 0;
-    _physPos = 0;
-    if (Vector.Size() > 0)
-    {
-      _physPos = (Vector[0] << BlockBits);
-      return SeekToPhys();
-    }
-    return S_OK;
-  }
-
-  MY_UNKNOWN_IMP2(ISequentialInStream, IInStream)
-
-  STDMETHOD(Read)(void *data, UInt32 size, UInt32 *processedSize);
-  STDMETHOD(Seek)(Int64 offset, UInt32 seekOrigin, UInt64 *newPosition);
-};
-
-
 STDMETHODIMP CClusterInStream2::Read(void *data, UInt32 size, UInt32 *processedSize)
 {
   if (processedSize)
@@ -2246,33 +1916,6 @@ STDMETHODIMP CClusterInStream2::Seek(Int64 offset, UInt32 seekOrigin, UInt64 *ne
     *newPosition = offset;
   return S_OK;
 }
-
-
-class CExtInStream:
-  public IInStream,
-  public CMyUnknownImp
-{
-  UInt64 _virtPos;
-  UInt64 _phyPos;
-public:
-  unsigned BlockBits;
-  UInt64 Size;
-  CMyComPtr<IInStream> Stream;
-  CRecordVector<CExtent> Extents;
-
-  CExtInStream() {}
-
-  HRESULT StartSeek()
-  {
-    _virtPos = 0;
-    _phyPos = 0;
-    return Stream->Seek(_phyPos, STREAM_SEEK_SET, NULL);
-  }
-
-  MY_UNKNOWN_IMP2(ISequentialInStream, IInStream)
-  STDMETHOD(Read)(void *data, UInt32 size, UInt32 *processedSize);
-  STDMETHOD(Seek)(Int64 offset, UInt32 seekOrigin, UInt64 *newPosition);
-};
 
 STDMETHODIMP CExtInStream::Read(void *data, UInt32 size, UInt32 *processedSize)
 {
@@ -2840,11 +2483,31 @@ API_FUNC_static_IsArc IsArc_Ext(const Byte *p, size_t size)
 
 static const Byte k_Signature[] = { 0x53, 0xEF };
 
-REGISTER_ARC_I(
-  "Ext", "ext ext2 ext3 ext4 img", 0, 0xC7,
-  k_Signature,
-  0x438,
+static IInArchive * CreateArc() {
+  return new CHandler();
+}
+
+static const CArcInfo s_arcInfo = {
   0,
-  IsArc_Ext)
+  0xC7,
+  sizeof(k_Signature) / sizeof(k_Signature[0]),
+  0x438,
+  k_Signature,
+  "Ext",
+  "ext ext2 ext3 ext4 img",
+  0,
+  CreateArc,
+  0,
+  IsArc_Ext
+};
+
+void CHandler::Register() {
+  static bool s_registered = false;
+
+  if(!s_registered) {
+    RegisterArc(&s_arcInfo);
+    s_registered = true;
+  }
+}
 
 }}

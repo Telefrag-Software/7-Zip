@@ -124,6 +124,7 @@ set(SEVEN_ZIP_CPP_SOURCE_FILES
 	7zip/Archive/CpioHandler.cpp
 	7zip/Archive/CpioHandler.h
 	7zip/Archive/ExtHandler.cpp
+	7zip/Archive/ExtHandler.h
 	7zip/Archive/GzHandler.cpp
 	7zip/Archive/IArchive.h
 	7zip/Archive/LzhHandler.cpp
