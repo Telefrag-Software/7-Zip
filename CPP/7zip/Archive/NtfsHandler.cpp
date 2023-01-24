@@ -29,6 +29,8 @@
 
 #include "Common/DummyOutStream.h"
 
+#include "NtfsHandler.h"
+
 #ifdef SHOW_DEBUG_INFO
 #define PRF(x) x
 #define PRF_UTF16(x) PRF(printf("%S", x))
@@ -67,25 +69,6 @@ static const unsigned kRecIndex_RootDir   = 5;
 static const unsigned kRecIndex_BadClus   = 8;
 static const unsigned kRecIndex_Security  = 9;
 
-struct CHeader
-{
-  unsigned SectorSizeLog;
-  unsigned ClusterSizeLog;
-  // Byte MediaType;
-  UInt32 NumHiddenSectors;
-  UInt64 NumSectors;
-  UInt64 NumClusters;
-  UInt64 MftCluster;
-  UInt64 SerialNumber;
-  UInt16 SectorsPerTrack;
-  UInt16 NumHeads;
-
-  UInt64 GetPhySize_Clusters() const { return NumClusters << ClusterSizeLog; }
-  UInt64 GetPhySize_Max() const { return (NumSectors + 1) << SectorSizeLog; }
-  UInt32 ClusterSize() const { return (UInt32)1 << ClusterSizeLog; }
-  bool Parse(const Byte *p);
-};
-
 static int GetLog(UInt32 num)
 {
   for (int i = 0; i < 31; i++)
@@ -93,6 +76,10 @@ static int GetLog(UInt32 num)
       return i;
   return -1;
 }
+
+UInt64 CHeader::GetPhySize_Clusters() const { return NumClusters << ClusterSizeLog; }
+UInt64 CHeader::GetPhySize_Max() const { return (NumSectors + 1) << SectorSizeLog; }
+UInt32 CHeader::ClusterSize() const { return (UInt32)1 << ClusterSizeLog; }
 
 bool CHeader::Parse(const Byte *p)
 {
@@ -166,14 +153,9 @@ bool CHeader::Parse(const Byte *p)
   return (numClustersInMftRec < 256 && numClustersInIndexBlock < 256);
 }
 
-struct CMftRef
-{
-  UInt64 Val;
-  
-  UInt64 GetIndex() const { return Val & (((UInt64)1 << 48) - 1); }
-  UInt16 GetNumber() const { return (UInt16)(Val >> 48); }
-  bool IsBaseItself() const { return Val == 0; }
-};
+UInt64 CMftRef::GetIndex() const { return Val & (((UInt64)1 << 48) - 1); }
+UInt16 CMftRef::GetNumber() const { return (UInt16)(Val >> 48); }
+bool CMftRef::IsBaseItself() const { return Val == 0; }
 
 #define ATNAME(n) ATTR_TYPE_ ## n
 #define DEF_ATTR_TYPE(v, n) ATNAME(n) = v
@@ -213,27 +195,8 @@ static const Byte kFileNameType_Win32     = 1; // after Dos name
 static const Byte kFileNameType_Dos       = 2; // short name
 static const Byte kFileNameType_Win32Dos  = 3; // short and full name are same
 
-struct CFileNameAttr
-{
-  CMftRef ParentDirRef;
-
-  // Probably these timestamps don't contain some useful timestamps. So we don't use them
-  // UInt64 CTime;
-  // UInt64 MTime;
-  // UInt64 ThisRecMTime;  // xp-64: the time of previous name change (not last name change. why?)
-  // UInt64 ATime;
-  // UInt64 AllocatedSize;
-  // UInt64 DataSize;
-  // UInt16 PackedEaSize;
-  UString2 Name;
-  UInt32 Attrib;
-  Byte NameType;
-  
-  bool IsDos() const { return NameType == kFileNameType_Dos; }
-  bool IsWin32() const { return (NameType == kFileNameType_Win32); }
-
-  bool Parse(const Byte *p, unsigned size);
-};
+bool CFileNameAttr::IsDos() const { return NameType == kFileNameType_Dos; }
+bool CFileNameAttr::IsWin32() const { return (NameType == kFileNameType_Win32); }
 
 static void GetString(const Byte *p, unsigned len, UString2 &res)
 {
@@ -274,26 +237,6 @@ bool CFileNameAttr::Parse(const Byte *p, unsigned size)
   return true;
 }
 
-struct CSiAttr
-{
-  UInt64 CTime;
-  UInt64 MTime;
-  // UInt64 ThisRecMTime;
-  UInt64 ATime;
-  UInt32 Attrib;
-
-  /*
-  UInt32 MaxVersions;
-  UInt32 Version;
-  UInt32 ClassId;
-  UInt32 OwnerId;
-  */
-  UInt32 SecurityId; // SecurityId = 0 is possible ?
-  // UInt64 QuotaCharged;
-
-  bool Parse(const Byte *p, unsigned size);
-};
-
 bool CSiAttr::Parse(const Byte *p, unsigned size)
 {
   if (size < 0x24)
@@ -311,22 +254,7 @@ bool CSiAttr::Parse(const Byte *p, unsigned size)
 
 static const UInt64 kEmptyExtent = (UInt64)(Int64)-1;
 
-struct CExtent
-{
-  UInt64 Virt;
-  UInt64 Phy;
-
-  bool IsEmpty() const { return Phy == kEmptyExtent; }
-};
-
-struct CVolInfo
-{
-  Byte MajorVer;
-  Byte MinorVer;
-  // UInt16 Flags;
-
-  bool Parse(const Byte *p, unsigned size);
-};
+bool CExtent::IsEmpty() const { return Phy == kEmptyExtent; }
 
 bool CVolInfo::Parse(const Byte *p, unsigned size)
 {
@@ -338,49 +266,20 @@ bool CVolInfo::Parse(const Byte *p, unsigned size)
   return true;
 }
 
-struct CAttr
+bool CAttr::IsCompressionUnitSupported() const { return CompressionUnit == 0 || CompressionUnit == 4; }
+
+bool CAttr::ParseFileName(CFileNameAttr &a) const { return a.Parse(Data, (unsigned)Data.Size()); }
+bool CAttr::ParseSi(CSiAttr &a) const { return a.Parse(Data, (unsigned)Data.Size()); }
+bool CAttr::ParseVolInfo(CVolInfo &a) const { return a.Parse(Data, (unsigned)Data.Size()); }
+UInt64 CAttr::GetSize() const { return NonResident ? Size : Data.Size(); }
+UInt64 CAttr::GetPackSize() const
 {
-  UInt32 Type;
-
-  Byte NonResident;
-
-  // Non-Resident
-  Byte CompressionUnit;
-
-  // UInt32 Len;
-  UString2 Name;
-  // UInt16 Flags;
-  // UInt16 Instance;
-  CByteBuffer Data;
-
-  // Non-Resident
-  UInt64 LowVcn;
-  UInt64 HighVcn;
-  UInt64 AllocatedSize;
-  UInt64 Size;
-  UInt64 PackSize;
-  UInt64 InitializedSize;
-
-  // Resident
-  // UInt16 ResidentFlags;
-
-  bool IsCompressionUnitSupported() const { return CompressionUnit == 0 || CompressionUnit == 4; }
-
-  UInt32 Parse(const Byte *p, unsigned size);
-  bool ParseFileName(CFileNameAttr &a) const { return a.Parse(Data, (unsigned)Data.Size()); }
-  bool ParseSi(CSiAttr &a) const { return a.Parse(Data, (unsigned)Data.Size()); }
-  bool ParseVolInfo(CVolInfo &a) const { return a.Parse(Data, (unsigned)Data.Size()); }
-  bool ParseExtents(CRecordVector<CExtent> &extents, UInt64 numClustersMax, unsigned compressionUnit) const;
-  UInt64 GetSize() const { return NonResident ? Size : Data.Size(); }
-  UInt64 GetPackSize() const
-  {
-    if (!NonResident)
-      return Data.Size();
-    if (CompressionUnit != 0)
-      return PackSize;
-    return AllocatedSize;
-  }
-};
+  if (!NonResident)
+    return Data.Size();
+  if (CompressionUnit != 0)
+    return PackSize;
+  return AllocatedSize;
+}
 
 #define RINOZ(x) { int __tt = (x); if (__tt != 0) return __tt; }
 
@@ -594,63 +493,31 @@ bool CAttr::ParseExtents(CRecordVector<CExtent> &extents, UInt64 numClustersMax,
 
 static const UInt64 kEmptyTag = (UInt64)(Int64)-1;
 
-static const unsigned kNumCacheChunksLog = 1;
-static const size_t kNumCacheChunks = (size_t)1 << kNumCacheChunksLog;
+HRESULT CInStream::SeekToPhys() { return Stream->Seek(_physPos, STREAM_SEEK_SET, NULL); }
 
-class CInStream:
-  public IInStream,
-  public CMyUnknownImp
+UInt32 CInStream::GetCuSize() const { return (UInt32)1 << (BlockSizeLog + CompressionUnit); }
+HRESULT CInStream::InitAndSeek(unsigned compressionUnit)
 {
-  UInt64 _virtPos;
-  UInt64 _physPos;
-  UInt64 _curRem;
-  bool _sparseMode;
-  
-
-  unsigned _chunkSizeLog;
-  UInt64 _tags[kNumCacheChunks];
-  CByteBuffer _inBuf;
-  CByteBuffer _outBuf;
-public:
-  UInt64 Size;
-  UInt64 InitializedSize;
-  unsigned BlockSizeLog;
-  unsigned CompressionUnit;
-  CRecordVector<CExtent> Extents;
-  bool InUse;
-  CMyComPtr<IInStream> Stream;
-
-  HRESULT SeekToPhys() { return Stream->Seek(_physPos, STREAM_SEEK_SET, NULL); }
-
-  UInt32 GetCuSize() const { return (UInt32)1 << (BlockSizeLog + CompressionUnit); }
-  HRESULT InitAndSeek(unsigned compressionUnit)
+  CompressionUnit = compressionUnit;
+  _chunkSizeLog = BlockSizeLog + CompressionUnit;
+  if (compressionUnit != 0)
   {
-    CompressionUnit = compressionUnit;
-    _chunkSizeLog = BlockSizeLog + CompressionUnit;
-    if (compressionUnit != 0)
-    {
-      UInt32 cuSize = GetCuSize();
-      _inBuf.Alloc(cuSize);
-      _outBuf.Alloc(kNumCacheChunks << _chunkSizeLog);
-    }
-    for (size_t i = 0; i < kNumCacheChunks; i++)
-      _tags[i] = kEmptyTag;
-
-    _sparseMode = false;
-    _curRem = 0;
-    _virtPos = 0;
-    _physPos = 0;
-    const CExtent &e = Extents[0];
-    if (!e.IsEmpty())
-      _physPos = e.Phy << BlockSizeLog;
-    return SeekToPhys();
+    UInt32 cuSize = GetCuSize();
+    _inBuf.Alloc(cuSize);
+    _outBuf.Alloc(kNumCacheChunks << _chunkSizeLog);
   }
+  for (size_t i = 0; i < kNumCacheChunks; i++)
+    _tags[i] = kEmptyTag;
 
-  MY_UNKNOWN_IMP1(IInStream)
-
-  STDMETHOD(Read)(void *data, UInt32 size, UInt32 *processedSize);
-  STDMETHOD(Seek)(Int64 offset, UInt32 seekOrigin, UInt64 *newPosition);
-};
+  _sparseMode = false;
+  _curRem = 0;
+  _virtPos = 0;
+  _physPos = 0;
+  const CExtent &e = Extents[0];
+  if (!e.IsEmpty())
+    _physPos = e.Phy << BlockSizeLog;
+  return SeekToPhys();
+}
 
 static size_t Lznt1Dec(Byte *dest, size_t outBufLim, size_t destLen, const Byte *src, size_t srcLen)
 {
@@ -993,107 +860,70 @@ static HRESULT DataParseExtents(unsigned clusterSizeLog, const CObjectVector<CAt
   return S_OK;
 }
 
-struct CDataRef
-{
-  unsigned Start;
-  unsigned Num;
-};
-
 static const UInt32 kMagic_FILE = 0x454C4946;
 static const UInt32 kMagic_BAAD = 0x44414142;
 
-struct CMftRec
+int CMftRec::FindWin32Name_for_DosName(unsigned dosNameIndex) const
 {
-  UInt32 Magic;
-  // UInt64 Lsn;
-  UInt16 SeqNumber;  // Number of times this mft record has been reused
-  UInt16 Flags;
-  // UInt16 LinkCount;
-  // UInt16 NextAttrInstance;
-  CMftRef BaseMftRef;
-  // UInt32 ThisRecNumber;
-  
-  UInt32 MyNumNameLinks;
-  int MyItemIndex; // index in Items[] of main item  for that record, or -1 if there is no item for that record
+  const CFileNameAttr &cur = FileNames[dosNameIndex];
+  if (cur.IsDos())
+    for (unsigned i = 0; i < FileNames.Size(); i++)
+    {
+      const CFileNameAttr &next = FileNames[i];
+      if (next.IsWin32() && cur.ParentDirRef.Val == next.ParentDirRef.Val)
+        return i;
+    }
+  return -1;
+}
 
-  CObjectVector<CAttr> DataAttrs;
-  CObjectVector<CFileNameAttr> FileNames;
-  CRecordVector<CDataRef> DataRefs;
-  // CAttr SecurityAttr;
+int CMftRec::FindDosName(unsigned nameIndex) const
+{
+  const CFileNameAttr &cur = FileNames[nameIndex];
+  if (cur.IsWin32())
+    for (unsigned i = 0; i < FileNames.Size(); i++)
+    {
+      const CFileNameAttr &next = FileNames[i];
+      if (next.IsDos() && cur.ParentDirRef.Val == next.ParentDirRef.Val)
+        return i;
+    }
+  return -1;
+}
 
-  CSiAttr SiAttr;
-  
-  CByteBuffer ReparseData;
+/*
+bool CMftRec::IsAltStream(int dataIndex) const
+{
+  return dataIndex >= 0 && (
+    (IsDir() ||
+    !DataAttrs[DataRefs[dataIndex].Start].Name.IsEmpty()));
+}
+*/
 
-  int FindWin32Name_for_DosName(unsigned dosNameIndex) const
-  {
-    const CFileNameAttr &cur = FileNames[dosNameIndex];
-    if (cur.IsDos())
-      for (unsigned i = 0; i < FileNames.Size(); i++)
-      {
-        const CFileNameAttr &next = FileNames[i];
-        if (next.IsWin32() && cur.ParentDirRef.Val == next.ParentDirRef.Val)
-          return i;
-      }
-    return -1;
-  }
+void CMftRec::MoveAttrsFrom(CMftRec &src)
+{
+  DataAttrs += src.DataAttrs;
+  FileNames += src.FileNames;
+  src.DataAttrs.ClearAndFree();
+  src.FileNames.ClearAndFree();
+}
 
-  int FindDosName(unsigned nameIndex) const
-  {
-    const CFileNameAttr &cur = FileNames[nameIndex];
-    if (cur.IsWin32())
-      for (unsigned i = 0; i < FileNames.Size(); i++)
-      {
-        const CFileNameAttr &next = FileNames[i];
-        if (next.IsDos() && cur.ParentDirRef.Val == next.ParentDirRef.Val)
-          return i;
-      }
-    return -1;
-  }
+UInt64 CMftRec::GetPackSize() const
+{
+  UInt64 res = 0;
+  FOR_VECTOR (i, DataRefs)
+    res += DataAttrs[DataRefs[i].Start].GetPackSize();
+  return res;
+}
 
-  /*
-  bool IsAltStream(int dataIndex) const
-  {
-    return dataIndex >= 0 && (
-      (IsDir() ||
-      !DataAttrs[DataRefs[dataIndex].Start].Name.IsEmpty()));
-  }
-  */
+bool CMftRec::IsEmpty() const { return (Magic <= 2); }
+bool CMftRec::IsFILE() const { return (Magic == kMagic_FILE); }
+bool CMftRec::IsBAAD() const { return (Magic == kMagic_BAAD); }
 
-  void MoveAttrsFrom(CMftRec &src)
-  {
-    DataAttrs += src.DataAttrs;
-    FileNames += src.FileNames;
-    src.DataAttrs.ClearAndFree();
-    src.FileNames.ClearAndFree();
-  }
+bool CMftRec::InUse() const { return (Flags & 1) != 0; }
+bool CMftRec::IsDir() const { return (Flags & 2) != 0; }
 
-  UInt64 GetPackSize() const
-  {
-    UInt64 res = 0;
-    FOR_VECTOR (i, DataRefs)
-      res += DataAttrs[DataRefs[i].Start].GetPackSize();
-    return res;
-  }
+UInt64 CMftRec::GetSize(unsigned dataIndex) const { return DataAttrs[DataRefs[dataIndex].Start].GetSize(); }
 
-  bool Parse(Byte *p, unsigned sectorSizeLog, UInt32 numSectors, UInt32 recNumber, CObjectVector<CAttr> *attrs);
-
-  bool IsEmpty() const { return (Magic <= 2); }
-  bool IsFILE() const { return (Magic == kMagic_FILE); }
-  bool IsBAAD() const { return (Magic == kMagic_BAAD); }
-
-  bool InUse() const { return (Flags & 1) != 0; }
-  bool IsDir() const { return (Flags & 2) != 0; }
-
-  void ParseDataNames();
-  HRESULT GetStream(IInStream *mainStream, int dataIndex,
-      unsigned clusterSizeLog, UInt64 numPhysClusters, IInStream **stream) const;
-  unsigned GetNumExtents(int dataIndex, unsigned clusterSizeLog, UInt64 numPhysClusters) const;
-
-  UInt64 GetSize(unsigned dataIndex) const { return DataAttrs[DataRefs[dataIndex].Start].GetSize(); }
-
-  CMftRec(): MyNumNameLinks(0), MyItemIndex(-1) {}
-};
+CMftRec::CMftRec(): MyNumNameLinks(0), MyItemIndex(-1) {}
 
 void CMftRec::ParseDataNames()
 {
@@ -1331,127 +1161,63 @@ static const int k_Item_DataIndex_IsDir = -2;
 static const int k_ParentFolderIndex_Lost = -2;
 static const int k_ParentFolderIndex_Deleted = -3;
 
-struct CItem
+CItem::CItem(): DataIndex(k_Item_DataIndex_IsDir), ParentFolder(-1), ParentHost(-1) {}
+
+bool CItem::IsAltStream() const { return ParentHost != -1; }
+bool CItem::IsDir() const { return DataIndex == k_Item_DataIndex_IsDir; }
+
+void CDatabase::InitProps()
 {
-  unsigned RecIndex;  // index in Recs array
-  unsigned NameIndex; // index in CMftRec::FileNames
+  _showSystemFiles = true;
+  // we show SystemFiles by default since it's difficult to track $Extend\* system files
+  // it must be fixed later
+  _showDeletedFiles = false;
+}
 
-  int DataIndex;      /* index in CMftRec::DataRefs
-                         -1: file without unnamed data stream
-                         -2: for directories */
-                         
-  int ParentFolder;   /* index in Items array
-                         -1: for root items
-                         -2: [LOST] folder
-                         -3: [UNKNOWN] folder (deleted lost) */
-  int ParentHost;     /* index in Items array, if it's AltStream
-                         -1: if it's not AltStream */
-  
-  CItem(): DataIndex(k_Item_DataIndex_IsDir), ParentFolder(-1), ParentHost(-1) {}
-  
-  bool IsAltStream() const { return ParentHost != -1; }
-  bool IsDir() const { return DataIndex == k_Item_DataIndex_IsDir; }
-        // check it !!!
-        // probably NTFS for empty file still creates empty DATA_ATTRIBUTE
-        // But it doesn't do it for $Secure:$SDS
-};
+CDatabase::CDatabase() { InitProps(); }
+CDatabase::~CDatabase() { ClearAndClose(); }
 
-struct CDatabase
+int CDatabase::FindDirItemForMtfRec(UInt64 recIndex) const
 {
-  CRecordVector<CItem> Items;
-  CObjectVector<CMftRec> Recs;
-  CMyComPtr<IInStream> InStream;
-  CHeader Header;
-  unsigned RecSizeLog;
-  UInt64 PhySize;
-
-  IArchiveOpenCallback *OpenCallback;
-
-  CByteBuffer ByteBuf;
-
-  CObjectVector<CAttr> VolAttrs;
-
-  CByteBuffer SecurData;
-  CRecordVector<size_t> SecurOffsets;
-
-  bool _showSystemFiles;
-  bool _showDeletedFiles;
-  CObjectVector<UString2> VirtFolderNames;
-  UString EmptyString;
-
-  int _systemFolderIndex;
-  int _lostFolderIndex_Normal;
-  int _lostFolderIndex_Deleted;
-
-  // bool _headerWarning;
-
-  bool ThereAreAltStreams;
-
-  void InitProps()
-  {
-    _showSystemFiles = true;
-    // we show SystemFiles by default since it's difficult to track $Extend\* system files
-    // it must be fixed later
-    _showDeletedFiles = false;
-  }
-
-  CDatabase() { InitProps(); }
-  ~CDatabase() { ClearAndClose(); }
-
-  void Clear();
-  void ClearAndClose();
-
-  void GetItemPath(unsigned index, NCOM::CPropVariant &path) const;
-  HRESULT Open();
-
-  HRESULT SeekToCluster(UInt64 cluster);
-
-  int FindDirItemForMtfRec(UInt64 recIndex) const
-  {
-    if (recIndex >= Recs.Size())
-      return -1;
-    const CMftRec &rec = Recs[(unsigned)recIndex];
-    if (!rec.IsDir())
-      return -1;
-    return rec.MyItemIndex;
-    /*
-    unsigned left = 0, right = Items.Size();
-    while (left != right)
-    {
-      unsigned mid = (left + right) / 2;
-      const CItem &item = Items[mid];
-      UInt64 midValue = item.RecIndex;
-      if (recIndex == midValue)
-      {
-        // if item is not dir (file or alt stream we don't return it)
-        // if (item.DataIndex < 0)
-        if (item.IsDir())
-          return mid;
-        right = mid;
-      }
-      else if (recIndex < midValue)
-        right = mid;
-      else
-        left = mid + 1;
-    }
+  if (recIndex >= Recs.Size())
     return -1;
-    */
-  }
-
-  bool FindSecurityDescritor(UInt32 id, UInt64 &offset, UInt32 &size) const;
-  
-  HRESULT ParseSecuritySDS_2();
-  void ParseSecuritySDS()
+  const CMftRec &rec = Recs[(unsigned)recIndex];
+  if (!rec.IsDir())
+    return -1;
+  return rec.MyItemIndex;
+  /*
+  unsigned left = 0, right = Items.Size();
+  while (left != right)
   {
-    HRESULT res = ParseSecuritySDS_2();
-    if (res != S_OK)
+    unsigned mid = (left + right) / 2;
+    const CItem &item = Items[mid];
+    UInt64 midValue = item.RecIndex;
+    if (recIndex == midValue)
     {
-      SecurOffsets.Clear();
-      SecurData.Free();
+      // if item is not dir (file or alt stream we don't return it)
+      // if (item.DataIndex < 0)
+      if (item.IsDir())
+        return mid;
+      right = mid;
     }
+    else if (recIndex < midValue)
+      right = mid;
+    else
+      left = mid + 1;
   }
+  return -1;
+  */
+}
 
-};
+void CDatabase::ParseSecuritySDS()
+{
+  HRESULT res = ParseSecuritySDS_2();
+  if (res != S_OK)
+  {
+    SecurOffsets.Clear();
+    SecurData.Free();
+  }
+}
 
 HRESULT CDatabase::SeekToCluster(UInt64 cluster)
 {
@@ -2103,26 +1869,6 @@ HRESULT CDatabase::Open()
 
   return S_OK;
 }
-
-class CHandler:
-  public IInArchive,
-  public IArchiveGetRawProps,
-  public IInArchiveGetStream,
-  public ISetProperties,
-  public CMyUnknownImp,
-  CDatabase
-{
-public:
-  MY_UNKNOWN_IMP4(
-      IInArchive,
-      IArchiveGetRawProps,
-      IInArchiveGetStream,
-      ISetProperties)
-  INTERFACE_IInArchive(;)
-  INTERFACE_IArchiveGetRawProps(;)
-  STDMETHOD(GetStream)(UInt32 index, ISequentialInStream **stream);
-  STDMETHOD(SetProperties)(const wchar_t * const *names, const PROPVARIANT *values, UInt32 numProps);
-};
 
 STDMETHODIMP CHandler::GetNumRawProps(UInt32 *numProps)
 {
@@ -2801,11 +2547,31 @@ STDMETHODIMP CHandler::SetProperties(const wchar_t * const *names, const PROPVAR
 
 static const Byte k_Signature[] = { 'N', 'T', 'F', 'S', ' ', ' ', ' ', ' ', 0 };
 
-REGISTER_ARC_I(
-  "NTFS", "ntfs img", 0, 0xD9,
-  k_Signature,
-  3,
+static IInArchive * CreateArc() {
+  return new CHandler();
+}
+
+static const CArcInfo s_arcInfo = {
   0,
-  NULL)
+  0xD9,
+  sizeof(k_Signature) / sizeof(k_Signature[0]),
+  3,
+  k_Signature,
+  "NTFS",
+  "ntfs img",
+  0,
+  CreateArc,
+  0,
+  0
+};
+
+void CHandler::Register() {
+  static bool s_registered = false;
+
+  if(!s_registered) {
+    RegisterArc(&s_arcInfo);
+    s_registered = true;
+  }
+}
 
 }}

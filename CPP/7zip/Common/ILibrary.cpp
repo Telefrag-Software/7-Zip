@@ -29,6 +29,7 @@
 #include "../Archive/MbrHandler.h"
 #include "../Archive/MslzHandler.h"
 #include "../Archive/MubHandler.h"
+#include "../Archive/NtfsHandler.h"
 #include "../Archive/7z/7zHandler.h"
 #include "../Archive/Cab/CabHandler.h"
 #include "../Archive/Iso/IsoHandler.h"
@@ -177,6 +178,7 @@ void Initialize() {
   NArchive::NMslz::CHandler::Register();
   NArchive::NMub::CHandler::Register();
   NArchive::NNsis::CHandler::Register();
+  NArchive::Ntfs::CHandler::Register();
   NArchive::NTar::CHandler::Register();
   NArchive::NWim::CHandler::Register();
   NArchive::NZip::CHandler::Register();

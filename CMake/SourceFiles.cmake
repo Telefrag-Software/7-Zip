@@ -135,6 +135,7 @@ set(SEVEN_ZIP_CPP_SOURCE_FILES
 	7zip/Archive/MbrHandler.cpp
 	7zip/Archive/MbrHandler.h
 	7zip/Archive/NtfsHandler.cpp
+	7zip/Archive/NtfsHandler.h
 	7zip/Archive/StdAfx.h
 	7zip/Archive/UefiHandler.cpp
 	7zip/Archive/VmdkHandler.cpp
