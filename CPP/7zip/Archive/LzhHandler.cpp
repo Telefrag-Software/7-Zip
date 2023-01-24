@@ -26,6 +26,8 @@
 
 #include "Common/ItemNameUtils.h"
 
+#include "LzhHandler.h"
+
 using namespace NWindows;
 using namespace NTime;
 
@@ -51,43 +53,30 @@ UInt32 LzhCrc16Update(UInt32 crc, const void *data, size_t size)
   return crc;
 }
 
-static class CLzhCrc16TableInit
+static void CLzhCrc16TableInit()
 {
-public:
-  CLzhCrc16TableInit()
+  for (UInt32 i = 0; i < 256; i++)
   {
-    for (UInt32 i = 0; i < 256; i++)
-    {
-      UInt32 r = i;
-      for (unsigned j = 0; j < 8; j++)
-        r = (r >> 1) ^ (kCrc16Poly & ((UInt32)0 - (r & 1)));
-      g_LzhCrc16Table[i] = (UInt16)r;
-    }
+    UInt32 r = i;
+    for (unsigned j = 0; j < 8; j++)
+      r = (r >> 1) ^ (kCrc16Poly & ((UInt32)0 - (r & 1)));
+    g_LzhCrc16Table[i] = (UInt16)r;
   }
-} g_LzhCrc16TableInit;
-
+}
 
 namespace NArchive {
 namespace NLzh{
-
-const unsigned kMethodIdSize = 5;
 
 const Byte kExtIdFileName = 0x01;
 const Byte kExtIdDirName  = 0x02;
 const Byte kExtIdUnixTime = 0x54;
 
-struct CExtension
+AString CExtension::GetString() const
 {
-  Byte Type;
-  CByteBuffer Data;
-  
-  AString GetString() const
-  {
-    AString s;
-    s.SetFrom_CalcLen((const char *)(const Byte *)Data, (unsigned)Data.Size());
-    return s;
-  }
-};
+  AString s;
+  s.SetFrom_CalcLen((const char *)(const Byte *)Data, (unsigned)Data.Size());
+  return s;
+}
 
 const UInt32 kBasicPartSize = 22;
 
@@ -105,128 +94,115 @@ API_FUNC_static_IsArc IsArc_Lzh(const Byte *p, size_t size)
 }
 }
 
-struct CItem
+bool CItem::IsValidMethod() const  { return (Method[0] == '-' && Method[1] == 'l' && Method[4] == '-'); }
+bool CItem::IsLhMethod() const  {return (IsValidMethod() && Method[2] == 'h'); }
+bool CItem::IsDir() const {return (IsLhMethod() && Method[3] == 'd'); }
+
+
+bool CItem::IsCopyMethod() const
 {
-  AString Name;
-  Byte Method[kMethodIdSize];
-  Byte Attributes;
-  Byte Level;
-  Byte OsId;
-  UInt32 PackSize;
-  UInt32 Size;
-  UInt32 ModifiedTime;
-  UInt16 CRC;
-  CObjectVector<CExtension> Extensions;
+  return (IsLhMethod() && Method[3] == '0') ||
+    (IsValidMethod() && Method[2] == 'z' && Method[3] == '4');
+}
 
-  bool IsValidMethod() const  { return (Method[0] == '-' && Method[1] == 'l' && Method[4] == '-'); }
-  bool IsLhMethod() const  {return (IsValidMethod() && Method[2] == 'h'); }
-  bool IsDir() const {return (IsLhMethod() && Method[3] == 'd'); }
+bool CItem::IsLh1GroupMethod() const
+{
+  if (!IsLhMethod())
+    return false;
+  switch (Method[3])
+  {
+    case '1':
+      return true;
+  }
+  return false;
+}
 
-  bool IsCopyMethod() const
-  {
-    return (IsLhMethod() && Method[3] == '0') ||
-      (IsValidMethod() && Method[2] == 'z' && Method[3] == '4');
-  }
-  
-  bool IsLh1GroupMethod() const
-  {
-    if (!IsLhMethod())
-      return false;
-    switch (Method[3])
-    {
-      case '1':
-        return true;
-    }
+bool CItem::IsLh4GroupMethod() const
+{
+  if (!IsLhMethod())
     return false;
-  }
-  
-  bool IsLh4GroupMethod() const
+  switch (Method[3])
   {
-    if (!IsLhMethod())
-      return false;
-    switch (Method[3])
-    {
-      case '4':
-      case '5':
-      case '6':
-      case '7':
-        return true;
-    }
-    return false;
+    case '4':
+    case '5':
+    case '6':
+    case '7':
+      return true;
   }
-  
-  unsigned GetNumDictBits() const
-  {
-    if (!IsLhMethod())
-      return 0;
-    switch (Method[3])
-    {
-      case '1': return 12;
-      case '2': return 13;
-      case '3': return 13;
-      case '4': return 12;
-      case '5': return 13;
-      case '6': return 15;
-      case '7': return 16;
-    }
+  return false;
+}
+
+unsigned CItem::GetNumDictBits() const
+{
+  if (!IsLhMethod())
     return 0;
+  switch (Method[3])
+  {
+    case '1': return 12;
+    case '2': return 13;
+    case '3': return 13;
+    case '4': return 12;
+    case '5': return 13;
+    case '6': return 15;
+    case '7': return 16;
   }
+  return 0;
+}
 
-  int FindExt(Byte type) const
+int CItem::FindExt(Byte type) const
+{
+  FOR_VECTOR (i, Extensions)
+    if (Extensions[i].Type == type)
+      return i;
+  return -1;
+}
+
+bool CItem::GetUnixTime(UInt32 &value) const
+{
+  value = 0;
+  int index = FindExt(kExtIdUnixTime);
+  if (index < 0
+      || Extensions[index].Data.Size() < 4)
   {
-    FOR_VECTOR (i, Extensions)
-      if (Extensions[i].Type == type)
-        return i;
-    return -1;
-  }
-  
-  bool GetUnixTime(UInt32 &value) const
-  {
-    value = 0;
-    int index = FindExt(kExtIdUnixTime);
-    if (index < 0
-        || Extensions[index].Data.Size() < 4)
+    if (Level == 2)
     {
-      if (Level == 2)
-      {
-        value = ModifiedTime;
-        return true;
-      }
-      return false;
+      value = ModifiedTime;
+      return true;
     }
-    const Byte *data = (const Byte *)(Extensions[index].Data);
-    value = GetUi32(data);
-    return true;
+    return false;
   }
+  const Byte *data = (const Byte *)(Extensions[index].Data);
+  value = GetUi32(data);
+  return true;
+}
 
-  AString GetDirName() const
-  {
-    int index = FindExt(kExtIdDirName);
-    if (index < 0)
-      return AString();
-    return Extensions[index].GetString();
-  }
+AString CItem::GetDirName() const
+{
+  int index = FindExt(kExtIdDirName);
+  if (index < 0)
+    return AString();
+  return Extensions[index].GetString();
+}
 
-  AString GetFileName() const
-  {
-    int index = FindExt(kExtIdFileName);
-    if (index < 0)
-      return Name;
-    return Extensions[index].GetString();
-  }
+AString CItem::GetFileName() const
+{
+  int index = FindExt(kExtIdFileName);
+  if (index < 0)
+    return Name;
+  return Extensions[index].GetString();
+}
 
-  AString GetName() const
-  {
-    AString s (GetDirName());
-    const char kDirSeparator = '\\';
-    // check kDirSeparator in Linux
-    s.Replace((char)(unsigned char)0xFF, kDirSeparator);
-    if (!s.IsEmpty() && s.Back() != kDirSeparator)
-      s += kDirSeparator;
-    s += GetFileName();
-    return s;
-  }
-};
+AString CItem::GetName() const
+{
+  AString s (GetDirName());
+  const char kDirSeparator = '\\';
+  // check kDirSeparator in Linux
+  s.Replace((char)(unsigned char)0xFF, kDirSeparator);
+  if (!s.IsEmpty() && s.Back() != kDirSeparator)
+    s += kDirSeparator;
+  s += GetFileName();
+  return s;
+}
 
 static const Byte *ReadUInt16(const Byte *p, UInt16 &v)
 {
@@ -379,27 +355,13 @@ static const Byte kProps[] =
   kpidHostOS
 };
 
-
-class COutStreamWithCRC:
-  public ISequentialOutStream,
-  public CMyUnknownImp
+void COutStreamWithCRC::Init(ISequentialOutStream *stream)
 {
-public:
-  MY_UNKNOWN_IMP
-
-  STDMETHOD(Write)(const void *data, UInt32 size, UInt32 *processedSize);
-private:
-  UInt32 _crc;
-  CMyComPtr<ISequentialOutStream> _stream;
-public:
-  void Init(ISequentialOutStream *stream)
-  {
-    _stream = stream;
-    _crc = 0;
-  }
-  void ReleaseStream() { _stream.Release(); }
-  UInt32 GetCRC() const { return _crc; }
-};
+  _stream = stream;
+  _crc = 0;
+}
+void COutStreamWithCRC::ReleaseStream() { _stream.Release(); }
+UInt32 COutStreamWithCRC::GetCRC() const { return _crc; }
 
 STDMETHODIMP COutStreamWithCRC::Write(const void *data, UInt32 size, UInt32 *processedSize)
 {
@@ -411,28 +373,6 @@ STDMETHODIMP COutStreamWithCRC::Write(const void *data, UInt32 size, UInt32 *pro
     *processedSize = size;
   return res;
 }
-
-
-struct CItemEx: public CItem
-{
-  UInt64 DataPosition;
-};
-
-
-class CHandler:
-  public IInArchive,
-  public CMyUnknownImp
-{
-  CObjectVector<CItemEx> _items;
-  CMyComPtr<IInStream> _stream;
-  UInt64 _phySize;
-  UInt32 _errorFlags;
-  bool _isArc;
-public:
-  MY_UNKNOWN_IMP1(IInArchive)
-  INTERFACE_IInArchive(;)
-  CHandler();
-};
 
 IMP_IInArchive_Props
 IMP_IInArchive_ArcProps_NO_Table
@@ -746,11 +686,32 @@ STDMETHODIMP CHandler::Extract(const UInt32 *indices, UInt32 numItems,
 
 static const Byte k_Signature[] = { '-', 'l', 'h' };
 
-REGISTER_ARC_I(
-  "Lzh", "lzh lha", 0, 6,
-  k_Signature,
-  2,
+static IInArchive * CreateArc() {
+  return new CHandler();
+}
+
+static const CArcInfo s_arcInfo = {
   0,
-  IsArc_Lzh)
+  6,
+  sizeof(k_Signature) / sizeof(k_Signature[0]),
+  2,
+  k_Signature,
+  "Lzh",
+  "lzh lha",
+  0,
+  CreateArc,
+  0,
+  IsArc_Lzh
+};
+
+void CHandler::Register() {
+  static bool s_registered = false;
+
+  if(!s_registered) {
+    CLzhCrc16TableInit();
+    RegisterArc(&s_arcInfo);
+    s_registered = true;
+  }
+}
 
 }}

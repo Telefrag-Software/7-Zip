@@ -131,6 +131,7 @@ set(SEVEN_ZIP_CPP_SOURCE_FILES
 	7zip/Archive/GzHandler.h
 	7zip/Archive/IArchive.h
 	7zip/Archive/LzhHandler.cpp
+	7zip/Archive/LzhHandler.h
 	7zip/Archive/MbrHandler.cpp
 	7zip/Archive/NtfsHandler.cpp
 	7zip/Archive/StdAfx.h
