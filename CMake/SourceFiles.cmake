@@ -148,6 +148,7 @@ set(SEVEN_ZIP_CPP_SOURCE_FILES
 	7zip/Archive/LzmaHandler.cpp
 	7zip/Archive/LzmaHandler.h
 	7zip/Archive/MslzHandler.cpp
+	7zip/Archive/MslzHandler.h
 	7zip/Archive/PeHandler.cpp
 	7zip/Archive/RpmHandler.cpp
 	7zip/Archive/SwfHandler.cpp
