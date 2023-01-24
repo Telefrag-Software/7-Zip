@@ -27,6 +27,8 @@
 #include "../Compress/ZlibDecoder.h"
 // #include "../Compress/LzmaDecoder.h"
 
+#include "SquashfsHandler.h"
+
 namespace NArchive {
 namespace NSquashfs {
 
@@ -138,168 +140,115 @@ static const UInt32 kNotCompressedBit32 = (1 << 24);
 static const UInt32 kHeaderSize3 = 0x77;
 // static const UInt32 kHeaderSize4 = 0x60;
 
-struct CHeader
+void CHeader::Parse3(const Byte *p)
 {
-  bool be;
-  bool SeveralMethods;
-  Byte NumUids;
-  Byte NumGids;
+  Method = kMethod_ZLIB;
+  GET_32 (0x08, Size);
+  GET_32 (0x0C, UidTable);
+  GET_32 (0x10, GidTable);
+  GET_32 (0x14, InodeTable);
+  GET_32 (0x18, DirTable);
+  GET_16 (0x20, BlockSize);
+  GET_16 (0x22, BlockSizeLog);
+  Flags   = p[0x24];
+  NumUids = p[0x25];
+  NumGids = p[0x26];
+  GET_32 (0x27, CTime);
+  GET_64 (0x2B, RootInode);
+  NumFrags = 0;
+  FragTable = UidTable;
 
-  UInt32 NumInodes;
-  UInt32 CTime;
-  UInt32 BlockSize;
-  UInt32 NumFrags;
-  UInt16 Method;
-  UInt16 BlockSizeLog;
-  UInt16 Flags;
-  UInt16 NumIDs;
-  UInt16 Major;
-  UInt16 Minor;
-  UInt64 RootInode;
-  UInt64 Size;
-  UInt64 UidTable;
-  UInt64 GidTable;
-  UInt64 XattrIdTable;
-  UInt64 InodeTable;
-  UInt64 DirTable;
-  UInt64 FragTable;
-  UInt64 LookupTable;
-
-  void Parse3(const Byte *p)
+  if (Major >= 2)
   {
-    Method = kMethod_ZLIB;
-    GET_32 (0x08, Size);
-    GET_32 (0x0C, UidTable);
-    GET_32 (0x10, GidTable);
-    GET_32 (0x14, InodeTable);
-    GET_32 (0x18, DirTable);
-    GET_16 (0x20, BlockSize);
-    GET_16 (0x22, BlockSizeLog);
-    Flags   = p[0x24];
-    NumUids = p[0x25];
-    NumGids = p[0x26];
-    GET_32 (0x27, CTime);
-    GET_64 (0x2B, RootInode);
-    NumFrags = 0;
-    FragTable = UidTable;
-
-    if (Major >= 2)
+    GET_32 (0x33, BlockSize);
+    GET_32 (0x37, NumFrags);
+    GET_32 (0x3B, FragTable);
+    if (Major == 3)
     {
-      GET_32 (0x33, BlockSize);
-      GET_32 (0x37, NumFrags);
-      GET_32 (0x3B, FragTable);
-      if (Major == 3)
-      {
-        GET_64 (0x3F, Size);
-        GET_64 (0x47, UidTable);
-        GET_64 (0x4F, GidTable);
-        GET_64 (0x57, InodeTable);
-        GET_64 (0x5F, DirTable);
-        GET_64 (0x67, FragTable);
-        GET_64 (0x6F, LookupTable);
-      }
+      GET_64 (0x3F, Size);
+      GET_64 (0x47, UidTable);
+      GET_64 (0x4F, GidTable);
+      GET_64 (0x57, InodeTable);
+      GET_64 (0x5F, DirTable);
+      GET_64 (0x67, FragTable);
+      GET_64 (0x6F, LookupTable);
     }
   }
+}
 
-  void Parse4(const Byte *p)
+void CHeader::Parse4(const Byte *p)
+{
+  LE_32 (0x08, CTime);
+  LE_32 (0x0C, BlockSize);
+  LE_32 (0x10, NumFrags);
+  LE_16 (0x14, Method);
+  LE_16 (0x16, BlockSizeLog);
+  LE_16 (0x18, Flags);
+  LE_16 (0x1A, NumIDs);
+  LE_64 (0x20, RootInode);
+  LE_64 (0x28, Size);
+  LE_64 (0x30, UidTable);
+  LE_64 (0x38, XattrIdTable);
+  LE_64 (0x40, InodeTable);
+  LE_64 (0x48, DirTable);
+  LE_64 (0x50, FragTable);
+  LE_64 (0x58, LookupTable);
+  GidTable = 0;
+}
+
+bool CHeader::Parse(const Byte *p)
+{
+  be = false;
+  SeveralMethods = false;
+  switch (GetUi32(p))
   {
-    LE_32 (0x08, CTime);
-    LE_32 (0x0C, BlockSize);
-    LE_32 (0x10, NumFrags);
-    LE_16 (0x14, Method);
-    LE_16 (0x16, BlockSizeLog);
-    LE_16 (0x18, Flags);
-    LE_16 (0x1A, NumIDs);
-    LE_64 (0x20, RootInode);
-    LE_64 (0x28, Size);
-    LE_64 (0x30, UidTable);
-    LE_64 (0x38, XattrIdTable);
-    LE_64 (0x40, InodeTable);
-    LE_64 (0x48, DirTable);
-    LE_64 (0x50, FragTable);
-    LE_64 (0x58, LookupTable);
-    GidTable = 0;
+    case kSignature32_LE: break;
+    case kSignature32_BE: be = true; break;
+    case kSignature32_LZ: SeveralMethods = true; break;
+    case kSignature32_B2: SeveralMethods = true; be = true; break;
+    default: return false;
   }
-
-  bool Parse(const Byte *p)
+  GET_32 (4, NumInodes);
+  GET_16 (0x1C, Major);
+  GET_16 (0x1E, Minor);
+  if (Major <= 3)
+    Parse3(p);
+  else
   {
-    be = false;
-    SeveralMethods = false;
-    switch (GetUi32(p))
-    {
-      case kSignature32_LE: break;
-      case kSignature32_BE: be = true; break;
-      case kSignature32_LZ: SeveralMethods = true; break;
-      case kSignature32_B2: SeveralMethods = true; be = true; break;
-      default: return false;
-    }
-    GET_32 (4, NumInodes);
-    GET_16 (0x1C, Major);
-    GET_16 (0x1E, Minor);
-    if (Major <= 3)
-      Parse3(p);
-    else
-    {
-      if (be)
-        return false;
-      Parse4(p);
-    }
-    return
-      InodeTable < DirTable &&
-      DirTable <= FragTable &&
-      FragTable <= Size &&
-      UidTable <= Size &&
-      BlockSizeLog >= 12 &&
-      BlockSizeLog < 31 &&
-      BlockSize == ((UInt32)1 << BlockSizeLog);
+    if (be)
+      return false;
+    Parse4(p);
   }
+  return
+    InodeTable < DirTable &&
+    DirTable <= FragTable &&
+    FragTable <= Size &&
+    UidTable <= Size &&
+    BlockSizeLog >= 12 &&
+    BlockSizeLog < 31 &&
+    BlockSize == ((UInt32)1 << BlockSizeLog);
+}
 
-  bool IsSupported() const { return Major > 0 && Major <= 4 && BlockSizeLog <= 23; }
-  bool IsOldVersion() const { return Major < 4; }
-  bool NeedCheckData() const { return (Flags & (1 << kFlag_CHECK)) != 0; }
-  unsigned GetFileNameOffset() const { return Major <= 2 ? 3 : (Major == 3 ? 5 : 8); }
-  unsigned GetSymLinkOffset() const { return Major <= 1 ? 5: (Major <= 2 ? 6: (Major == 3 ? 18 : 24)); }
-  unsigned GetSpecGuidIndex() const { return Major <= 1 ? 0xF: 0xFF; }
-};
+bool CHeader::IsSupported() const { return Major > 0 && Major <= 4 && BlockSizeLog <= 23; }
+bool CHeader::IsOldVersion() const { return Major < 4; }
+bool CHeader::NeedCheckData() const { return (Flags & (1 << kFlag_CHECK)) != 0; }
+unsigned CHeader::GetFileNameOffset() const { return Major <= 2 ? 3 : (Major == 3 ? 5 : 8); }
+unsigned CHeader::GetSymLinkOffset() const { return Major <= 1 ? 5: (Major <= 2 ? 6: (Major == 3 ? 18 : 24)); }
+unsigned CHeader::GetSpecGuidIndex() const { return Major <= 1 ? 0xF: 0xFF; }
 
 static const UInt32 kFrag_Empty = (UInt32)(Int32)-1;
 // static const UInt32 kXattr_Empty = (UInt32)(Int32)-1;
 
-struct CNode
+bool CNode::IsDir() const { return (Type == kType_DIR || Type == kType_DIR + 7); }
+bool CNode::IsLink() const { return (Type == kType_LNK || Type == kType_LNK + 7); }
+UInt64 CNode::GetSize() const { return IsDir() ? 0 : FileSize; }
+
+bool CNode::ThereAreFrags() const { return Frag != kFrag_Empty; }
+UInt64 CNode::GetNumBlocks(const CHeader &_h) const
 {
-  UInt16 Type;
-  UInt16 Mode;
-  UInt16 Uid;
-  UInt16 Gid;
-  UInt32 Frag;
-  UInt32 Offset;
-  // UInt32 MTime;
-  // UInt32 Number;
-  // UInt32 NumLinks;
-  // UInt32 RDev;
-  // UInt32 Xattr;
-  // UInt32 Parent;
-  
-  UInt64 FileSize;
-  UInt64 StartBlock;
-  // UInt64 Sparse;
-  
-  UInt32 Parse1(const Byte *p, UInt32 size, const CHeader &_h);
-  UInt32 Parse2(const Byte *p, UInt32 size, const CHeader &_h);
-  UInt32 Parse3(const Byte *p, UInt32 size, const CHeader &_h);
-  UInt32 Parse4(const Byte *p, UInt32 size, const CHeader &_h);
-  
-  bool IsDir() const { return (Type == kType_DIR || Type == kType_DIR + 7); }
-  bool IsLink() const { return (Type == kType_LNK || Type == kType_LNK + 7); }
-  UInt64 GetSize() const { return IsDir() ? 0 : FileSize; }
-  
-  bool ThereAreFrags() const { return Frag != kFrag_Empty; }
-  UInt64 GetNumBlocks(const CHeader &_h) const
-  {
-    return (FileSize >> _h.BlockSizeLog) +
-      (!ThereAreFrags() && (FileSize & (_h.BlockSize - 1)) != 0);
-  }
-};
+  return (FileSize >> _h.BlockSizeLog) +
+    (!ThereAreFrags() && (FileSize & (_h.BlockSize - 1)) != 0);
+}
 
 UInt32 CNode::Parse1(const Byte *p, UInt32 size, const CHeader &_h)
 {
@@ -801,121 +750,27 @@ UInt32 CNode::Parse4(const Byte *p, UInt32 size, const CHeader &_h)
   return offset;
 }
 
-struct CItem
+CItem::CItem(): Node(-1), Parent(-1), Ptr(0) {}
+
+UInt32 CData::GetNumBlocks() const { return PackPos.Size(); }
+void CData::Clear()
 {
-  int Node;
-  int Parent;
-  UInt32 Ptr;
+  Data.Free();
+  PackPos.Clear();
+  UnpackPos.Clear();
+}
 
-  CItem(): Node(-1), Parent(-1), Ptr(0) {}
-};
-
-struct CData
+void CHandler::ClearCache()
 {
-  CByteBuffer Data;
-  CRecordVector<UInt32> PackPos;
-  CRecordVector<UInt32> UnpackPos; // additional item at the end contains TotalUnpackSize
-  
-  UInt32 GetNumBlocks() const { return PackPos.Size(); }
-  void Clear()
-  {
-    Data.Free();
-    PackPos.Clear();
-    UnpackPos.Clear();
-  }
-};
+  _cachedBlockStartPos = 0;
+  _cachedPackBlockSize = 0;
+  _cachedUnpackBlockSize = 0;
+}
 
-struct CFrag
+CHandler::~CHandler()
 {
-  UInt64 StartBlock;
-  UInt32 Size;
-};
-
-class CHandler:
-  public IInArchive,
-  public IInArchiveGetStream,
-  public CMyUnknownImp
-{
-  CRecordVector<CItem> _items;
-  CRecordVector<CNode> _nodes;
-  CRecordVector<UInt32> _nodesPos;
-  CRecordVector<UInt32> _blockToNode;
-  CData _inodesData;
-  CData _dirs;
-  CRecordVector<CFrag> _frags;
-  // CByteBuffer _uids;
-  // CByteBuffer _gids;
-  CHeader _h;
-  bool _noPropsLZMA;
-  bool _needCheckLzma;
-  
-  UInt32 _openCodePage;
-
-  CMyComPtr<IInStream> _stream;
-  UInt64 _sizeCalculated;
-
-  IArchiveOpenCallback *_openCallback;
-
-  int _nodeIndex;
-  CRecordVector<bool> _blockCompressed;
-  CRecordVector<UInt64> _blockOffsets;
-  
-  CByteBuffer _cachedBlock;
-  UInt64 _cachedBlockStartPos;
-  UInt32 _cachedPackBlockSize;
-  UInt32 _cachedUnpackBlockSize;
-
-  CLimitedSequentialInStream *_limitedInStreamSpec;
-  CMyComPtr<ISequentialInStream> _limitedInStream;
-
-  CBufPtrSeqOutStream *_outStreamSpec;
-  CMyComPtr<ISequentialOutStream> _outStream;
-
-  // NCompress::NLzma::CDecoder *_lzmaDecoderSpec;
-  // CMyComPtr<ICompressCoder> _lzmaDecoder;
-
-  NCompress::NZlib::CDecoder *_zlibDecoderSpec;
-  CMyComPtr<ICompressCoder> _zlibDecoder;
-  
-  CXzUnpacker _xz;
-
-  CByteBuffer _inputBuffer;
-
-  CDynBufSeqOutStream *_dynOutStreamSpec;
-  CMyComPtr<ISequentialOutStream> _dynOutStream;
-
-  void ClearCache()
-  {
-    _cachedBlockStartPos = 0;
-    _cachedPackBlockSize = 0;
-    _cachedUnpackBlockSize = 0;
-  }
-
-  HRESULT Decompress(ISequentialOutStream *outStream, Byte *outBuf, bool *outBufWasWritten, UInt32 *outBufWasWrittenSize,
-      UInt32 inSize, UInt32 outSizeMax);
-  HRESULT ReadMetadataBlock(UInt32 &packSize);
-  HRESULT ReadData(CData &data, UInt64 start, UInt64 end);
-
-  HRESULT OpenDir(int parent, UInt32 startBlock, UInt32 offset, unsigned level, int &nodeIndex);
-  HRESULT ScanInodes(UInt64 ptr);
-  // HRESULT ReadUids(UInt64 start, UInt32 num, CByteBuffer &ids);
-  HRESULT Open2(IInStream *inStream);
-  AString GetPath(int index) const;
-  bool GetPackSize(int index, UInt64 &res, bool fillOffsets);
-
-public:
-  CHandler();
-  ~CHandler()
-  {
-    XzUnpacker_Free(&_xz);
-  }
-
-  MY_UNKNOWN_IMP2(IInArchive, IInArchiveGetStream)
-  INTERFACE_IInArchive(;)
-  STDMETHOD(GetStream)(UInt32 index, ISequentialInStream **stream);
-
-  HRESULT ReadBlock(UInt64 blockIndex, Byte *dest, size_t blockSize);
-};
+  XzUnpacker_Free(&_xz);
+}
 
 CHandler::CHandler()
 {
@@ -1339,15 +1194,6 @@ HRESULT CHandler::ReadData(CData &data, UInt64 start, UInt64 end)
   return S_OK;
 }
 
-struct CTempItem
-{
-  UInt32 StartBlock;
-  // UInt32 iNodeNumber1;
-  UInt32 Offset;
-  // UInt16 iNodeNumber2;
-  UInt16 Type;
-};
-  
 HRESULT CHandler::OpenDir(int parent, UInt32 startBlock, UInt32 offset, unsigned level, int &nodeIndex)
 {
   if (level > kNumDirLevelsMax)
@@ -2080,13 +1926,6 @@ STDMETHODIMP CHandler::GetProperty(UInt32 index, PROPID propID, PROPVARIANT *val
   COM_TRY_END
 }
 
-class CSquashfsInStream: public CCachedInStream
-{
-  HRESULT ReadBlock(UInt64 blockIndex, Byte *dest, size_t blockSize);
-public:
-  CHandler *Handler;
-};
-
 HRESULT CSquashfsInStream::ReadBlock(UInt64 blockIndex, Byte *dest, size_t blockSize)
 {
   return Handler->ReadBlock(blockIndex, dest, blockSize);
@@ -2319,11 +2158,31 @@ static const Byte k_Signature[] = {
     4, 's', 'h', 's', 'q',
     4, 'q', 's', 'h', 's' };
 
-REGISTER_ARC_I(
-  "SquashFS", "squashfs", 0, 0xD2,
-  k_Signature,
-  0,
+static IInArchive * CreateArc() {
+  return new CHandler();
+}
+
+static const CArcInfo s_arcInfo = {
   NArcInfoFlags::kMultiSignature,
-  NULL)
+  0xD2,
+  sizeof(k_Signature) / sizeof(k_Signature[0]),
+  0,
+  k_Signature,
+  "SquashFS",
+  "squashfs",
+  0,
+  CreateArc,
+  0,
+  0
+};
+
+void CHandler::Register() {
+  static bool s_registered = false;
+
+  if(!s_registered) {
+    RegisterArc(&s_arcInfo);
+    s_registered = true;
+  }
+}
 
 }}
