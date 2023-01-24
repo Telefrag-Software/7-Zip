@@ -140,6 +140,7 @@ set(SEVEN_ZIP_CPP_SOURCE_FILES
 	7zip/Archive/VmdkHandler.cpp
 	7zip/Archive/XzHandler.h
 	7zip/Archive/ArjHandler.cpp
+	7zip/Archive/ArjHandler.h
 	7zip/Archive/CramfsHandler.cpp
 	7zip/Archive/CramfsHandler.h
 	7zip/Archive/FatHandler.cpp
