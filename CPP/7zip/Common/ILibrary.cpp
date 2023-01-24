@@ -21,6 +21,7 @@
 #include "../Archive/GptHandler.h"
 #include "../Archive/GzHandler.h"
 #include "../Archive/HfsHandler.h"
+#include "../Archive/IhexHandler.h"
 #include "../Archive/7z/7zHandler.h"
 #include "../Archive/Cab/CabHandler.h"
 #include "../Archive/Iso/IsoHandler.h"
@@ -159,6 +160,7 @@ void Initialize() {
   NArchive::NGpt::CHandler::Register();
   NArchive::NGz::CHandler::Register();
   NArchive::NHfs::CHandler::Register();
+  NArchive::NIhex::CHandler::Register();
   NArchive::NIso::CHandler::Register();
   NArchive::NNsis::CHandler::Register();
   NArchive::NTar::CHandler::Register();

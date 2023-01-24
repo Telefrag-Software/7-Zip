@@ -161,6 +161,7 @@ set(SEVEN_ZIP_CPP_SOURCE_FILES
 	7zip/Archive/FlvHandler.h
 	7zip/Archive/HandlerCont.h
 	7zip/Archive/IhexHandler.cpp
+	7zip/Archive/IhexHandler.h
 	7zip/Archive/MachoHandler.cpp
 	7zip/Archive/MubHandler.cpp
 	7zip/Archive/PpmdHandler.cpp
