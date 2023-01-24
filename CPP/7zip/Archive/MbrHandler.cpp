@@ -21,6 +21,8 @@
 
 #include "HandlerCont.h"
 
+#include "MbrHandler.h"
+
 #ifdef SHOW_DEBUG_INFO
 #define PRF(x) x
 #else
@@ -32,25 +34,16 @@ using namespace NWindows;
 namespace NArchive {
 namespace NMbr {
 
-struct CChs
+UInt32 CChs::GetSector() const { return SectCyl & 0x3F; }
+UInt32 CChs::GetCyl() const { return ((UInt32)SectCyl >> 6 << 8) | Cyl8; }
+
+void CChs::Parse(const Byte *p)
 {
-  Byte Head;
-  Byte SectCyl;
-  Byte Cyl8;
-  
-  UInt32 GetSector() const { return SectCyl & 0x3F; }
-  UInt32 GetCyl() const { return ((UInt32)SectCyl >> 6 << 8) | Cyl8; }
-  void ToString(NCOM::CPropVariant &prop) const;
-
-  void Parse(const Byte *p)
-  {
-    Head = p[0];
-    SectCyl = p[1];
-    Cyl8 = p[2];
-  }
-  bool Check() const { return GetSector() > 0; }
-};
-
+  Head = p[0];
+  SectCyl = p[1];
+  Cyl8 = p[2];
+}
+bool CChs::Check() const { return GetSector() > 0; }
 
 // Chs in some MBRs contains only low bits of "Cyl number". So we disable check.
 /*
@@ -74,61 +67,44 @@ void CChs::ToString(NCOM::CPropVariant &prop) const
   prop = s;
 }
 
-struct CPartition
+CPartition::CPartition() { memset (this, 0, sizeof(*this)); }
+
+bool CPartition::IsEmpty() const { return Type == 0; }
+bool CPartition::IsExtended() const { return Type == 5 || Type == 0xF; }
+UInt32 CPartition::GetLimit() const { return Lba + NumBlocks; }
+// bool CPartition::IsActive() const { return Status == 0x80; }
+UInt64 CPartition::GetPos() const { return (UInt64)Lba * 512; }
+UInt64 CPartition::GetSize() const { return (UInt64)NumBlocks * 512; }
+
+bool CPartition::CheckLbaLimits() const { return (UInt32)0xFFFFFFFF - Lba >= NumBlocks; }
+bool CPartition::Parse(const Byte *p)
 {
-  Byte Status;
-  CChs BeginChs;
-  Byte Type;
-  CChs EndChs;
-  UInt32 Lba;
-  UInt32 NumBlocks;
+  Status = p[0];
+  BeginChs.Parse(p + 1);
+  Type = p[4];
+  EndChs.Parse(p + 5);
+  Lba = GetUi32(p + 8);
+  NumBlocks = GetUi32(p + 12);
+  if (Type == 0)
+    return true;
+  if (Status != 0 && Status != 0x80)
+    return false;
+  return BeginChs.Check()
+     && EndChs.Check()
+     // && CompareChs(BeginChs, EndChs) <= 0
+     && NumBlocks > 0
+     && CheckLbaLimits();
+}
 
-  CPartition() { memset (this, 0, sizeof(*this)); }
-  
-  bool IsEmpty() const { return Type == 0; }
-  bool IsExtended() const { return Type == 5 || Type == 0xF; }
-  UInt32 GetLimit() const { return Lba + NumBlocks; }
-  // bool IsActive() const { return Status == 0x80; }
-  UInt64 GetPos() const { return (UInt64)Lba * 512; }
-  UInt64 GetSize() const { return (UInt64)NumBlocks * 512; }
-
-  bool CheckLbaLimits() const { return (UInt32)0xFFFFFFFF - Lba >= NumBlocks; }
-  bool Parse(const Byte *p)
-  {
-    Status = p[0];
-    BeginChs.Parse(p + 1);
-    Type = p[4];
-    EndChs.Parse(p + 5);
-    Lba = GetUi32(p + 8);
-    NumBlocks = GetUi32(p + 12);
-    if (Type == 0)
-      return true;
-    if (Status != 0 && Status != 0x80)
-      return false;
-    return BeginChs.Check()
-       && EndChs.Check()
-       // && CompareChs(BeginChs, EndChs) <= 0
-       && NumBlocks > 0
-       && CheckLbaLimits();
-  }
-
-  #ifdef SHOW_DEBUG_INFO
-  void Print() const
-  {
-    NCOM::CPropVariant prop, prop2;
-    BeginChs.ToString(prop);
-    EndChs.ToString(prop2);
-    printf("   %2x %2x %8X %8X %12S %12S", (int)Status, (int)Type, Lba, NumBlocks, prop.bstrVal, prop2.bstrVal);
-  }
-  #endif
-};
-
-struct CPartType
+#ifdef SHOW_DEBUG_INFO
+void CPartition::Print() const
 {
-  UInt32 Id;
-  const char *Ext;
-  const char *Name;
-};
+  NCOM::CPropVariant prop, prop2;
+  BeginChs.ToString(prop);
+  EndChs.ToString(prop2);
+  printf("   %2x %2x %8X %8X %12S %12S", (int)Status, (int)Type, Lba, NumBlocks, prop.bstrVal, prop2.bstrVal);
+}
+#endif
 
 #define kFat "fat"
 
@@ -170,32 +146,13 @@ static int FindPartType(UInt32 type)
   return -1;
 }
 
-struct CItem
+int CHandler::GetItem_ExtractInfo(UInt32 index, UInt64 &pos, UInt64 &size) const
 {
-  bool IsReal;
-  bool IsPrim;
-  UInt64 Size;
-  CPartition Part;
-};
-
-class CHandler: public CHandlerCont
-{
-  CObjectVector<CItem> _items;
-  UInt64 _totalSize;
-  CByteBuffer _buffer;
-
-  virtual int GetItem_ExtractInfo(UInt32 index, UInt64 &pos, UInt64 &size) const
-  {
-    const CItem &item = _items[index];
-    pos = item.Part.GetPos();
-    size = item.Size;
-    return NExtract::NOperationResult::kOK;
-  }
-
-  HRESULT ReadTables(IInStream *stream, UInt32 baseLba, UInt32 lba, unsigned level);
-public:
-  INTERFACE_IInArchive_Cont(;)
-};
+  const CItem &item = _items[index];
+  pos = item.Part.GetPos();
+  size = item.Size;
+  return NExtract::NOperationResult::kOK;
+}
 
 HRESULT CHandler::ReadTables(IInStream *stream, UInt32 baseLba, UInt32 lba, unsigned level)
 {
@@ -436,10 +393,31 @@ STDMETHODIMP CHandler::GetProperty(UInt32 index, PROPID propID, PROPVARIANT *val
   // 3, { 1, 1, 0 },
   // 2, { 0x55, 0x1FF },
 
-REGISTER_ARC_I_NO_SIG(
-  "MBR", "mbr", 0, 0xDB,
-  0,
+static IInArchive * CreateArc() {
+  return new CHandler();
+}
+
+static const CArcInfo s_arcInfo = {
   NArcInfoFlags::kPureStartOpen,
-  NULL)
+  0xDB,
+  0,
+  0,
+  0,
+  "MBR",
+  "mbr",
+  0,
+  CreateArc,
+  0,
+  0
+};
+
+void CHandler::Register() {
+  static bool s_registered = false;
+
+  if(!s_registered) {
+    RegisterArc(&s_arcInfo);
+    s_registered = true;
+  }
+}
 
 }}

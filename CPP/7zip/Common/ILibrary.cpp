@@ -25,6 +25,7 @@
 #include "../Archive/LzhHandler.h"
 #include "../Archive/LzmaHandler.h"
 #include "../Archive/MachoHandler.h"
+#include "../Archive/MbrHandler.h"
 #include "../Archive/7z/7zHandler.h"
 #include "../Archive/Cab/CabHandler.h"
 #include "../Archive/Iso/IsoHandler.h"
@@ -168,6 +169,7 @@ void Initialize() {
   NArchive::NLzh::CHandler::Register();
   NArchive::NLzma::CHandler::Register();
   NArchive::NMacho::CHandler::Register();
+  NArchive::NMbr::CHandler::Register();
   NArchive::NNsis::CHandler::Register();
   NArchive::NTar::CHandler::Register();
   NArchive::NWim::CHandler::Register();
