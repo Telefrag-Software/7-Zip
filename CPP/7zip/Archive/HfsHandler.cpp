@@ -16,6 +16,8 @@
 
 #include "../Compress/ZlibDecoder.h"
 
+#include "HfsHandler.h"
+
 /* if HFS_SHOW_ALT_STREAMS is defined, the handler will show attribute files
    and resource forks. In most cases it looks useless. So we disable it. */
  
@@ -30,54 +32,27 @@ namespace NHfs {
 
 static const char * const kResFileName = "rsrc"; // "com.apple.ResourceFork";
 
-struct CExtent
+CFork::CFork(): Size(0), NumBlocks(0) {}
+
+bool CFork::IsEmpty() const { return Size == 0 && NumBlocks == 0 && Extents.Size() == 0; }
+
+bool CFork::Check_Size_with_NumBlocks(unsigned blockSizeLog) const
 {
-  UInt32 Pos;
-  UInt32 NumBlocks;
-};
+  return Size <= ((UInt64)NumBlocks << blockSizeLog);
+}
 
-struct CIdExtents
+bool CFork::IsOk(unsigned blockSizeLog) const
 {
-  UInt32 ID;
-  UInt32 StartBlock;
-  CRecordVector<CExtent> Extents;
-};
+  // we don't check cases with extra (empty) blocks in last extent
+  return Check_NumBlocks() && Check_Size_with_NumBlocks(blockSizeLog);
+}
 
-struct CFork
+bool CFork::UpgradeAndTest(const CObjectVector<CIdExtents> &items, UInt32 id, unsigned blockSizeLog)
 {
-  UInt64 Size;
-  UInt32 NumBlocks;
-  // UInt32 ClumpSize;
-  CRecordVector<CExtent> Extents;
-
-  CFork(): Size(0), NumBlocks(0) {}
-
-  void Parse(const Byte *p);
-
-  bool IsEmpty() const { return Size == 0 && NumBlocks == 0 && Extents.Size() == 0; }
-
-  UInt32 Calc_NumBlocks_from_Extents() const;
-  bool Check_NumBlocks() const;
-
-  bool Check_Size_with_NumBlocks(unsigned blockSizeLog) const
-  {
-    return Size <= ((UInt64)NumBlocks << blockSizeLog);
-  }
-
-  bool IsOk(unsigned blockSizeLog) const
-  {
-    // we don't check cases with extra (empty) blocks in last extent
-    return Check_NumBlocks() && Check_Size_with_NumBlocks(blockSizeLog);
-  }
-
-  bool Upgrade(const CObjectVector<CIdExtents> &items, UInt32 id);
-  bool UpgradeAndTest(const CObjectVector<CIdExtents> &items, UInt32 id, unsigned blockSizeLog)
-  {
-    if (!Upgrade(items, id))
-      return false;
-    return IsOk(blockSizeLog);
-  }
-};
+  if (!Upgrade(items, id))
+    return false;
+  return IsOk(blockSizeLog);
+}
 
 static const unsigned kNumFixedExtents = 8;
 
@@ -120,14 +95,6 @@ bool CFork::Check_NumBlocks() const
   }
   return num == NumBlocks;
 }
-
-struct CIdIndexPair
-{
-  UInt32 ID;
-  int Index;
-
-  int Compare(const CIdIndexPair &a) const;
-};
 
 #define RINOZ(x) { int __tt = (x); if (__tt != 0) return __tt; }
 
@@ -183,34 +150,9 @@ bool CFork::Upgrade(const CObjectVector<CIdExtents> &items, UInt32 id)
   return true;
 }
 
-
-struct CVolHeader
-{
-  Byte Header[2];
-  UInt16 Version;
-  // UInt32 Attr;
-  // UInt32 LastMountedVersion;
-  // UInt32 JournalInfoBlock;
-
-  UInt32 CTime;
-  UInt32 MTime;
-  // UInt32 BackupTime;
-  // UInt32 CheckedTime;
-  
-  UInt32 NumFiles;
-  UInt32 NumFolders;
-  unsigned BlockSizeLog;
-  UInt32 NumBlocks;
-  UInt32 NumFreeBlocks;
-
-  // UInt32 WriteCount;
-  // UInt32 FinderInfo[8];
-  // UInt64 VolID;
-
-  UInt64 GetPhySize() const { return (UInt64)NumBlocks << BlockSizeLog; }
-  UInt64 GetFreeSize() const { return (UInt64)NumFreeBlocks << BlockSizeLog; }
-  bool IsHfsX() const { return Version > 4; }
-};
+UInt64 CVolHeader::GetPhySize() const { return (UInt64)NumBlocks << BlockSizeLog; }
+UInt64 CVolHeader::GetFreeSize() const { return (UInt64)NumFreeBlocks << BlockSizeLog; }
+bool CVolHeader::IsHfsX() const { return Version > 4; }
 
 inline void HfsTimeToFileTime(UInt32 hfsTime, FILETIME &ft)
 {
@@ -219,154 +161,24 @@ inline void HfsTimeToFileTime(UInt32 hfsTime, FILETIME &ft)
   ft.dwHighDateTime = (DWORD)(v >> 32);
 }
 
-enum ERecordType
+CItem::CItem(): UseAttr(false), UseInlineData(false) {}
+bool CItem::IsDir() const { return Type == RECORD_TYPE_FOLDER; }
+const CFork &CItem::GetFork(bool isResource) const { return (const CFork & )*(isResource ? &ResourceFork: &DataFork ); }
+
+bool CRef::IsAltStream() const { return IsResource || AttrIndex >= 0; }
+CRef::CRef(): AttrIndex(-1), Parent(-1), IsResource(false)  {}
+
+UInt64 CDatabase::Get_UnpackSize_of_Ref(const CRef &ref) const
 {
-  RECORD_TYPE_FOLDER = 1,
-  RECORD_TYPE_FILE,
-  RECORD_TYPE_FOLDER_THREAD,
-  RECORD_TYPE_FILE_THREAD
-};
-
-struct CItem
-{
-  UString Name;
-  
-  UInt32 ParentID;
-
-  UInt16 Type;
-  UInt16 FileMode;
-  // UInt16 Flags;
-  // UInt32 Valence;
-  UInt32 ID;
-  UInt32 CTime;
-  UInt32 MTime;
-  // UInt32 AttrMTime;
-  UInt32 ATime;
-  // UInt32 BackupDate;
-
-  /*
-  UInt32 OwnerID;
-  UInt32 GroupID;
-  Byte AdminFlags;
-  Byte OwnerFlags;
-  union
-  {
-    UInt32  iNodeNum;
-    UInt32  LinkCount;
-    UInt32  RawDevice;
-  } special;
-
-  UInt32 FileType;
-  UInt32 FileCreator;
-  UInt16 FinderFlags;
-  UInt16 Point[2];
-  */
-
-  CFork DataFork;
-  CFork ResourceFork;
-
-  // for compressed attribute
-  UInt64 UnpackSize;
-  size_t DataPos;
-  UInt32 PackSize;
-  unsigned Method;
-  bool UseAttr;
-  bool UseInlineData;
-
-  CItem(): UseAttr(false), UseInlineData(false) {}
-  bool IsDir() const { return Type == RECORD_TYPE_FOLDER; }
-  const CFork &GetFork(bool isResource) const { return (const CFork & )*(isResource ? &ResourceFork: &DataFork ); }
-};
-
-struct CAttr
-{
-  UInt32 ID;
-  UInt32 Size;
-  size_t Pos;
-  UString Name;
-};
-
-struct CRef
-{
-  unsigned ItemIndex;
-  int AttrIndex;
-  int Parent;
-  bool IsResource;
-
-  bool IsAltStream() const { return IsResource || AttrIndex >= 0; }
-  CRef(): AttrIndex(-1), Parent(-1), IsResource(false)  {}
-};
-
-class CDatabase
-{
-  HRESULT ReadFile(const CFork &fork, CByteBuffer &buf, IInStream *inStream);
-  HRESULT LoadExtentFile(const CFork &fork, IInStream *inStream, CObjectVector<CIdExtents> *overflowExtentsArray);
-  HRESULT LoadAttrs(const CFork &fork, IInStream *inStream, IArchiveOpenCallback *progress);
-  HRESULT LoadCatalog(const CFork &fork, const CObjectVector<CIdExtents> *overflowExtentsArray, IInStream *inStream, IArchiveOpenCallback *progress);
-  bool Parse_decmpgfs(const CAttr &attr, CItem &item, bool &skip);
-public:
-  CRecordVector<CRef> Refs;
-  CObjectVector<CItem> Items;
-  CObjectVector<CAttr> Attrs;
-
-  CByteBuffer AttrBuf;
-
-  CVolHeader Header;
-  bool HeadersError;
-  bool ThereAreAltStreams;
-  // bool CaseSensetive;
-  UString ResFileName;
-
-  UInt64 SpecOffset;
-  UInt64 PhySize;
-  UInt64 PhySize2;
-  UInt64 ArcFileSize;
-
-  void Clear()
-  {
-    SpecOffset = 0;
-    PhySize = 0;
-    PhySize2 = 0;
-    ArcFileSize = 0;
-    HeadersError = false;
-    ThereAreAltStreams = false;
-    // CaseSensetive = false;
-    Refs.Clear();
-    Items.Clear();
-    Attrs.Clear();
-    AttrBuf.Free();
-  }
-
-  UInt64 Get_UnpackSize_of_Ref(const CRef &ref) const
-  {
-    if (ref.AttrIndex >= 0)
-      return Attrs[ref.AttrIndex].Size;
-    const CItem &item = Items[ref.ItemIndex];
-    if (item.IsDir())
-      return 0;
-    if (item.UseAttr)
-      return item.UnpackSize;
-    return item.GetFork(ref.IsResource).Size;
-  }
-
-  void GetItemPath(unsigned index, NWindows::NCOM::CPropVariant &path) const;
-  HRESULT Open2(IInStream *inStream, IArchiveOpenCallback *progress);
-};
-
-enum
-{
-  kHfsID_Root                  = 1,
-  kHfsID_RootFolder            = 2,
-  kHfsID_ExtentsFile           = 3,
-  kHfsID_CatalogFile           = 4,
-  kHfsID_BadBlockFile          = 5,
-  kHfsID_AllocationFile        = 6,
-  kHfsID_StartupFile           = 7,
-  kHfsID_AttributesFile        = 8,
-  kHfsID_RepairCatalogFile     = 14,
-  kHfsID_BogusExtentFile       = 15,
-  kHfsID_FirstUserCatalogNode  = 16
-};
+  if (ref.AttrIndex >= 0)
+    return Attrs[ref.AttrIndex].Size;
+  const CItem &item = Items[ref.ItemIndex];
+  if (item.IsDir())
+    return 0;
+  if (item.UseAttr)
+    return item.UnpackSize;
+  return item.GetFork(ref.IsResource).Size;
+}
 
 void CDatabase::GetItemPath(unsigned index, NWindows::NCOM::CPropVariant &path) const
 {
@@ -470,18 +282,6 @@ HRESULT CDatabase::ReadFile(const CFork &fork, CByteBuffer &buf, IInStream *inSt
 
 static const unsigned kNodeDescriptor_Size = 14;
 
-struct CNodeDescriptor
-{
-  UInt32 fLink;
-  // UInt32 bLink;
-  Byte Kind;
-  // Byte Height;
-  unsigned NumRecords;
-
-  bool Parse(const Byte *p, unsigned nodeSizeLog);
-};
-
-
 bool CNodeDescriptor::Parse(const Byte *p, unsigned nodeSizeLog)
 {
   fLink = Get32(p);
@@ -509,27 +309,6 @@ bool CNodeDescriptor::Parse(const Byte *p, unsigned nodeSizeLog)
   }
   return true;
 }
-
-struct CHeaderRec
-{
-  // UInt16 TreeDepth;
-  // UInt32 RootNode;
-  // UInt32 LeafRecords;
-  UInt32 FirstLeafNode;
-  // UInt32 LastLeafNode;
-  unsigned NodeSizeLog;
-  // UInt16 MaxKeyLength;
-  UInt32 TotalNodes;
-  // UInt32 FreeNodes;
-  // UInt16 Reserved1;
-  // UInt32 ClumpSize;
-  // Byte BtreeType;
-  // Byte KeyCompareType;
-  // UInt32 Attributes;
-  // UInt32 Reserved3[16];
-  
-  HRESULT Parse2(const CByteBuffer &buf);
-};
 
 HRESULT CHeaderRec::Parse2(const CByteBuffer &buf)
 {
@@ -1368,33 +1147,6 @@ HRESULT CDatabase::Open2(IInStream *inStream, IArchiveOpenCallback *progress)
   return S_OK;
 }
 
-
-
-class CHandler:
-  public IInArchive,
-  public IArchiveGetRawProps,
-  public IInArchiveGetStream,
-  public CMyUnknownImp,
-  public CDatabase
-{
-  CMyComPtr<IInStream> _stream;
-
-  HRESULT GetForkStream(const CFork &fork, ISequentialInStream **stream);
-
-  HRESULT ExtractZlibFile(
-      ISequentialOutStream *realOutStream,
-      const CItem &item,
-      NCompress::NZlib::CDecoder *_zlibDecoderSpec,
-      CByteBuffer &buf,
-      UInt64 progressStart,
-      IArchiveExtractCallback *extractCallback);
-public:
-  MY_UNKNOWN_IMP3(IInArchive, IArchiveGetRawProps, IInArchiveGetStream)
-  INTERFACE_IInArchive(;)
-  INTERFACE_IArchiveGetRawProps(;)
-  STDMETHOD(GetStream)(UInt32 index, ISequentialInStream **stream);
-};
-
 static const Byte kProps[] =
 {
   kpidPath,
@@ -1983,11 +1735,31 @@ static const Byte k_Signature[] = {
     4, 'H', '+', 0, 4,
     4, 'H', 'X', 0, 5 };
 
-REGISTER_ARC_I(
-  "HFS", "hfs hfsx", 0, 0xE3,
-  k_Signature,
-  kHeaderPadSize,
+static IInArchive * CreateArc() {
+  return new CHandler();
+}
+
+static const CArcInfo s_arcInfo = {
   NArcInfoFlags::kMultiSignature,
-  IsArc_HFS)
+  0xE3,
+  sizeof(k_Signature) / sizeof(k_Signature[0]),
+  kHeaderPadSize,
+  k_Signature,
+  "HFS",
+  "hfs hfsx",
+  0,
+  CreateArc,
+  0,
+  IsArc_HFS
+};
+
+void CHandler::Register() {
+  static bool s_registered = false;
+
+  if(!s_registered) {
+    RegisterArc(&s_arcInfo);
+    s_registered = true;
+  }
+}
 
 }}
