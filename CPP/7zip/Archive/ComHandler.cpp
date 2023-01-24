@@ -41,6 +41,19 @@ static const char * const kExtensions[] =
   , "xls"
 };
 
+bool CDatabase::IsNotArcType() const
+{
+  return
+    Type != k_Type_Msi &&
+    Type != k_Type_Msp;
+}
+
+void CDatabase::UpdatePhySize(UInt64 val)
+{
+  if (PhySize < val)
+    PhySize = val;
+}
+
 HRESULT CDatabase::ReadSector(IInStream *inStream, Byte *buf, unsigned sectorSizeBits, UInt32 sid)
 {
   UpdatePhySize(((UInt64)sid + 2) << sectorSizeBits);
@@ -62,6 +75,9 @@ static void GetFileTimeFromMem(const Byte *p, FILETIME *ft)
   ft->dwLowDateTime = Get32(p);
   ft->dwHighDateTime = Get32(p + 4);
 }
+
+bool CItem::IsEmpty() const { return Type == NItemType::kEmpty; }
+bool CItem::IsDir() const { return Type == NItemType::kStorage || Type == NItemType::kRootStorage; }
 
 void CItem::Parse(const Byte *p, bool mode64bit)
 {
@@ -89,6 +105,24 @@ void CDatabase::Clear()
   Mat.Free();
   Items.Clear();
   Refs.Clear();
+}
+
+bool CDatabase::IsLargeStream(UInt64 size) const { return size >= LongStreamMinSize; }
+
+UInt64 CDatabase::GetItemPackSize(UInt64 size) const
+{
+  UInt64 mask = ((UInt64)1 << (IsLargeStream(size) ? SectorSizeBits : MiniSectorSizeBits)) - 1;
+  return (size + mask) & ~mask;
+}
+
+bool CDatabase::GetMiniCluster(UInt32 sid, UInt64 &res) const
+{
+  unsigned subBits = SectorSizeBits - MiniSectorSizeBits;
+  UInt32 fid = sid >> subBits;
+  if (fid >= NumSectorsInMiniStream)
+    return false;
+  res = (((UInt64)MiniSids[fid] + 1) << subBits) + (sid & ((1 << subBits) - 1));
+  return true;
 }
 
 static const UInt32 kNoDid = 0xFFFFFFFF;

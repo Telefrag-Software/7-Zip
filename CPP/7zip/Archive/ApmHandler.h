@@ -39,15 +39,9 @@ class CHandler: public CHandlerCont
   bool _isArc;
 
   HRESULT ReadTables(IInStream *stream);
-  UInt64 BlocksToBytes(UInt32 i) const { return (UInt64)i << _blockSizeLog; }
+  UInt64 BlocksToBytes(UInt32 i) const;
 
-  virtual int GetItem_ExtractInfo(UInt32 index, UInt64 &pos, UInt64 &size) const
-  {
-    const CItem &item = _items[index];
-    pos = BlocksToBytes(item.StartBlock);
-    size = BlocksToBytes(item.NumBlocks);
-    return NExtract::NOperationResult::kOK;
-  }
+  virtual int GetItem_ExtractInfo(UInt32 index, UInt64 &pos, UInt64 &size) const;
 
 public:
   static void Register();

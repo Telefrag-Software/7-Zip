@@ -134,6 +134,11 @@ static const Byte kArcProps[] =
   kpidNumBlocks
 };
 
+
+bool CHeader::IsVer2() const { return (Flags & kFlag_FsVer2) != 0; }
+unsigned CHeader::GetBlockSizeShift() const { return (unsigned)(Flags >> k_Flags_BlockSize_Shift) & k_Flags_BlockSize_Mask; }
+unsigned CHeader::GetMethod() const { return (unsigned)(Flags >> k_Flags_Method_Shift) & k_Flags_Method_Mask; }
+
 bool CHeader::Parse(const Byte *p)
 {
   if (memcmp(p + 16, kSignature, ARRAY_SIZE(kSignature)) != 0)
@@ -371,6 +376,20 @@ void CHandler::Free()
 {
   MidFree(_data);
   _data = 0;
+}
+
+CHandler::CHandler(): _data(0) {}
+CHandler::~CHandler() { Free(); }
+
+UInt32 CHandler::GetNumBlocks(UInt32 size) const
+{
+  return (size + ((UInt32)1 << _blockSizeLog) - 1) >> _blockSizeLog;
+}
+
+void CHandler::UpdatePhySize(UInt32 s)
+{
+  if (_phySize < s)
+    _phySize = s;
 }
 
 STDMETHODIMP CHandler::Close()

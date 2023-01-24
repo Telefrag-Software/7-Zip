@@ -40,6 +40,15 @@ Byte *Base64ToBin(Byte *dest, const char *src);
 namespace NArchive {
 namespace NDmg {
 
+
+UInt64 CBlock::GetNextPackOffset() const { return PackPos + PackSize; }
+UInt64 CBlock::GetNextUnpPos() const { return UnpPos + UnpSize; }
+
+bool CBlock::IsZeroMethod() const { return Type == METHOD_ZERO_0 || Type == METHOD_ZERO_2; }
+bool CBlock::ThereAreDataInBlock() const { return Type != METHOD_COMMENT && Type != METHOD_END; }
+
+bool CChecksum::IsCrc32() const { return Type == kCheckSumType_CRC && NumBits == 32; }
+
 UInt32 CChecksum::GetCrc32() const { return Get32(Data); }
 
 void CChecksum::Parse(const Byte *p)

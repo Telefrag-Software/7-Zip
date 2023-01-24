@@ -87,6 +87,12 @@ static const char * const k_Types[] =
   , "New CRC"
 };
 
+bool CItem::IsBin() const { return Type == k_Type_BinLe || Type == k_Type_BinBe; }
+bool CItem::IsCrcFormat() const { return Type == k_Type_HexCrc; }
+bool CItem::IsDir() const { return MY_LIN_S_ISDIR(Mode); }
+bool CItem::IsTrailer() const { return strcmp(Name, kName_TRAILER) == 0; }
+UInt64 CItem::GetDataPosition() const { return HeaderPos + HeaderSize; }
+
 HRESULT CInArchive::Read(void *data, size_t *size)
 {
   HRESULT res = ReadStream(Stream, data, size);

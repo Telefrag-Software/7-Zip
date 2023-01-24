@@ -79,6 +79,9 @@ static const char * const k_TypeExtionsions[] =
   , "lib"
 };
 
+CItem::CItem(): TextFileIndex(-1), SameNameIndex(-1) {}
+UInt64 CItem::GetDataPos() const { return HeaderPos + HeaderSize; }
+
 HRESULT CInArchive::Open(IInStream *inStream)
 {
   SubType = kSubType_None;
@@ -90,6 +93,11 @@ HRESULT CInArchive::Open(IInStream *inStream)
     return S_FALSE;
   m_Stream = inStream;
   return S_OK;
+}
+
+HRESULT CInArchive::SkipData(UInt64 dataSize)
+{
+  return m_Stream->Seek(dataSize + (dataSize & 1), STREAM_SEEK_CUR, &Position);
 }
 
 static unsigned RemoveTailSpaces(char *dest, const char *s, unsigned size)

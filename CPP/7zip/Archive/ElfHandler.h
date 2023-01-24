@@ -34,9 +34,7 @@ struct CHeader
 
   bool Parse(const Byte *buf);
 
-  UInt64 GetHeadersSize() const { return (UInt64)HeaderSize +
-      (UInt32)NumSegments * SegmentEntrySize +
-      (UInt32)NumSections * SectionEntrySize; }
+  UInt64 GetHeadersSize() const;
 };
 
 struct CSegment
@@ -50,12 +48,7 @@ struct CSegment
   UInt64 VSize;
   UInt64 Align;
 
-  void UpdateTotalSize(UInt64 &totalSize)
-  {
-    UInt64 t = Offset + Size;
-    if (totalSize < t)
-      totalSize = t;
-  }
+  void UpdateTotalSize(UInt64 &totalSize);
   void Parse(const Byte *p, bool mode64, bool be);
 };
 
@@ -74,12 +67,7 @@ struct CSection
 
   UInt64 GetSize() const;
 
-  void UpdateTotalSize(UInt64 &totalSize)
-  {
-    UInt64 t = Offset + GetSize();
-    if (totalSize < t)
-      totalSize = t;
-  }
+  void UpdateTotalSize(UInt64 &totalSize);
   bool Parse(const Byte *p, bool mode64, bool be);
 };
 
@@ -106,7 +94,7 @@ public:
   INTERFACE_IInArchive(;)
   STDMETHOD(AllowTail)(Int32 allowTail);
 
-  CHandler(): _allowTail(false) {}
+  CHandler();
 };
 
 }}

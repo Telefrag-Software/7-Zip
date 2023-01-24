@@ -31,12 +31,12 @@ struct CBlock
   UInt64 UnpSize;
   UInt64 PackPos;
   UInt64 PackSize;
-  
-  UInt64 GetNextPackOffset() const { return PackPos + PackSize; }
-  UInt64 GetNextUnpPos() const { return UnpPos + UnpSize; }
 
-  bool IsZeroMethod() const { return Type == METHOD_ZERO_0 || Type == METHOD_ZERO_2; }
-  bool ThereAreDataInBlock() const { return Type != METHOD_COMMENT && Type != METHOD_END; }
+  UInt64 GetNextPackOffset() const;
+  UInt64 GetNextUnpPos() const;
+
+  bool IsZeroMethod() const;
+  bool ThereAreDataInBlock() const;
 };
 
 struct CChecksum
@@ -45,7 +45,7 @@ struct CChecksum
   UInt32 NumBits;
   Byte Data[kChecksumSize_Max];
 
-  bool IsCrc32() const { return Type == kCheckSumType_CRC && NumBits == 32; }
+  bool IsCrc32() const;
   UInt32 GetCrc32() const;
   void Parse(const Byte *p);
 };

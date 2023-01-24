@@ -58,6 +58,10 @@ static const UInt32 kSegmentSize64 = 0x38;
 static const UInt32 kSectionSize32 = 0x28;
 static const UInt32 kSectionSize64 = 0x40;
 
+UInt64 CHeader::GetHeadersSize() const { return (UInt64)HeaderSize +
+    (UInt32)NumSegments * SegmentEntrySize +
+    (UInt32)NumSections * SectionEntrySize; }
+
 bool CHeader::Parse(const Byte *p)
 {
   switch (p[4])
@@ -147,6 +151,13 @@ static const char * const g_SegmentFlags[] =
   , "Write"
   , "Read"
 };
+
+void CSegment::UpdateTotalSize(UInt64 &totalSize)
+{
+  UInt64 t = Offset + Size;
+  if (totalSize < t)
+    totalSize = t;
+}
 
 void CSegment::Parse(const Byte *p, bool mode64, bool be)
 {
@@ -257,6 +268,13 @@ static const CUInt32PCharPair g_SectionFlags[] =
 };
 
 UInt64 CSection::GetSize() const { return Type == SHT_NOBITS ? 0 : VSize; }
+
+void CSection::UpdateTotalSize(UInt64 &totalSize)
+{
+  UInt64 t = Offset + GetSize();
+  if (totalSize < t)
+    totalSize = t;
+}
 
 bool CSection::Parse(const Byte *p, bool mode64, bool be)
 {
@@ -603,6 +621,8 @@ void CHandler::GetSectionName(UInt32 index, NCOM::CPropVariant &prop, bool showN
       return;
     }
 }
+
+CHandler::CHandler(): _allowTail(false) {}
 
 static const Byte kArcProps[] =
 {

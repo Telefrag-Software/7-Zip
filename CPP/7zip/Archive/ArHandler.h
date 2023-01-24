@@ -52,8 +52,8 @@ struct CItem
   int TextFileIndex;
   int SameNameIndex;
 
-  CItem(): TextFileIndex(-1), SameNameIndex(-1) {}
-  UInt64 GetDataPos() const { return HeaderPos + HeaderSize; }
+  CItem();
+  UInt64 GetDataPos() const;
 };
 
 class CInArchive
@@ -66,10 +66,7 @@ public:
  
   HRESULT GetNextItem(CItem &itemInfo, bool &filled);
   HRESULT Open(IInStream *inStream);
-  HRESULT SkipData(UInt64 dataSize)
-  {
-    return m_Stream->Seek(dataSize + (dataSize & 1), STREAM_SEEK_CUR, &Position);
-  }
+  HRESULT SkipData(UInt64 dataSize);
 };
 
 class CHandler:

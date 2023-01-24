@@ -134,6 +134,16 @@ HRESULT CHandler::ReadTables(IInStream *stream)
   return S_OK;
 }
 
+UInt64 CHandler::BlocksToBytes(UInt32 i) const { return (UInt64)i << _blockSizeLog; }
+
+int CHandler::GetItem_ExtractInfo(UInt32 index, UInt64 &pos, UInt64 &size) const
+{
+  const CItem &item = _items[index];
+  pos = BlocksToBytes(item.StartBlock);
+  size = BlocksToBytes(item.NumBlocks);
+  return NExtract::NOperationResult::kOK;
+}
+
 STDMETHODIMP CHandler::Open(IInStream *stream, const UInt64 *, IArchiveOpenCallback * /* callback */)
 {
   COM_TRY_BEGIN

@@ -45,11 +45,11 @@ struct CItem
   UInt32 HeaderSize;
   UInt64 HeaderPos;
 
-  bool IsBin() const { return Type == k_Type_BinLe || Type == k_Type_BinBe; }
-  bool IsCrcFormat() const { return Type == k_Type_HexCrc; }
-  bool IsDir() const { return MY_LIN_S_ISDIR(Mode); }
-  bool IsTrailer() const { return strcmp(Name, kName_TRAILER) == 0; }
-  UInt64 GetDataPosition() const { return HeaderPos + HeaderSize; }
+  bool IsBin() const;
+  bool IsCrcFormat() const;
+  bool IsDir() const;
+  bool IsTrailer() const;
+  UInt64 GetDataPosition() const;
 };
 
 enum EErrorType

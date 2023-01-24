@@ -51,8 +51,8 @@ struct CItem
   UInt32 Sid;
   Byte Type;
 
-  bool IsEmpty() const { return Type == NItemType::kEmpty; }
-  bool IsDir() const { return Type == NItemType::kStorage || Type == NItemType::kRootStorage; }
+  bool IsEmpty() const;
+  bool IsDir() const;
 
   void Parse(const Byte *p, bool mode64bit);
 };
@@ -89,42 +89,21 @@ public:
   UInt64 PhySize;
   EType Type;
 
-  bool IsNotArcType() const
-  {
-    return
-      Type != k_Type_Msi &&
-      Type != k_Type_Msp;
-  }
+  bool IsNotArcType() const;
 
-  void UpdatePhySize(UInt64 val)
-  {
-    if (PhySize < val)
-      PhySize = val;
-  }
+  void UpdatePhySize(UInt64 val);
   HRESULT ReadSector(IInStream *inStream, Byte *buf, unsigned sectorSizeBits, UInt32 sid);
   HRESULT ReadIDs(IInStream *inStream, Byte *buf, unsigned sectorSizeBits, UInt32 sid, UInt32 *dest);
 
   HRESULT Update_PhySize_WithItem(unsigned index);
 
   void Clear();
-  bool IsLargeStream(UInt64 size) const { return size >= LongStreamMinSize; }
+  bool IsLargeStream(UInt64 size) const;
   UString GetItemPath(UInt32 index) const;
 
-  UInt64 GetItemPackSize(UInt64 size) const
-  {
-    UInt64 mask = ((UInt64)1 << (IsLargeStream(size) ? SectorSizeBits : MiniSectorSizeBits)) - 1;
-    return (size + mask) & ~mask;
-  }
+  UInt64 GetItemPackSize(UInt64 size) const;
 
-  bool GetMiniCluster(UInt32 sid, UInt64 &res) const
-  {
-    unsigned subBits = SectorSizeBits - MiniSectorSizeBits;
-    UInt32 fid = sid >> subBits;
-    if (fid >= NumSectorsInMiniStream)
-      return false;
-    res = (((UInt64)MiniSids[fid] + 1) << subBits) + (sid & ((1 << subBits) - 1));
-    return true;
-  }
+  bool GetMiniCluster(UInt32 sid, UInt64 &res) const;
 
   HRESULT Open(IInStream *inStream);
 };

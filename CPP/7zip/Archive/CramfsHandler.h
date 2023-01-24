@@ -47,9 +47,9 @@ struct CHeader
 
   bool Parse(const Byte *p);
 
-  bool IsVer2() const { return (Flags & kFlag_FsVer2) != 0; }
-  unsigned GetBlockSizeShift() const { return (unsigned)(Flags >> k_Flags_BlockSize_Shift) & k_Flags_BlockSize_Mask; }
-  unsigned GetMethod() const { return (unsigned)(Flags >> k_Flags_Method_Shift) & k_Flags_Method_Mask; }
+  bool IsVer2() const;
+  unsigned GetBlockSizeShift() const;
+  unsigned GetMethod() const;
 };
 
 class CHandler:
@@ -92,22 +92,15 @@ class CHandler:
   bool GetPackSize(int index, UInt32 &res) const;
   void Free();
 
-  UInt32 GetNumBlocks(UInt32 size) const
-  {
-    return (size + ((UInt32)1 << _blockSizeLog) - 1) >> _blockSizeLog;
-  }
+  UInt32 GetNumBlocks(UInt32 size) const;
 
-  void UpdatePhySize(UInt32 s)
-  {
-    if (_phySize < s)
-      _phySize = s;
-  }
+  void UpdatePhySize(UInt32 s);
 
 public:
   static void Register();
 
-  CHandler(): _data(0) {}
-  ~CHandler() { Free(); }
+  CHandler();
+  ~CHandler();
   MY_UNKNOWN_IMP2(IInArchive, IInArchiveGetStream)
   INTERFACE_IInArchive(;)
   STDMETHOD(GetStream)(UInt32 index, ISequentialInStream **stream);

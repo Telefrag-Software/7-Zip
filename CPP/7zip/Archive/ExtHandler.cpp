@@ -478,6 +478,9 @@ void CExtentIndexNode::Parse(const Byte *p)
   // unused 16-bit field (at offset 0x0A) can be not zero in some cases. Why?
 }
 
+UInt32 CExtent::GetVirtEnd() const { return VirtBlock + Len; }
+bool CExtent::IsLenOK() const { return VirtBlock + Len >= VirtBlock; }
+
 void CExtent::Parse(const Byte *p)
 {
   LE_32 (0x00, VirtBlock);
@@ -493,6 +496,14 @@ void CExtent::Parse(const Byte *p)
   LE_16 (0x06, hi);
   PhyStart |= ((UInt64)hi << 32);
 }
+
+CNode::CNode():
+  ParentNode(-1),
+  ItemIndex(-1),
+  SymLinkIndex(-1),
+  DirIndex(0),
+  NumLinksCalced(0)
+    {}
 
 bool CNode::IsFlags_HUGE()    const { return (Flags & k_NodeFlags_HUGE) != 0; }
 bool CNode::IsFlags_EXTENTS() const { return (Flags & k_NodeFlags_EXTENTS) != 0; }
@@ -588,6 +599,25 @@ bool CNode::Parse(const Byte *p, const CHeader &_h)
 
   return true;
 }
+
+CItem::CItem():
+    Node(0),
+    ParentNode(-1),
+    SymLinkItemIndex(-1),
+    Type(k_Type_UNKNOWN)
+      {}
+
+void CItem::Clear()
+{
+  Node = 0;
+  ParentNode = -1;
+  SymLinkItemIndex = -1;
+  Type = k_Type_UNKNOWN;
+  Name.Empty();
+}
+
+bool CItem::IsDir() const { return Type == k_Type_DIR; }
+// bool CItem::IsNotDir() const { return Type != k_Type_DIR && Type != k_Type_UNKNOWN; }
 
 HRESULT CHandler::ParseDir(const Byte *p, size_t size, unsigned iNodeDir)
 {

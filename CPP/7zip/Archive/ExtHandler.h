@@ -140,8 +140,8 @@ struct CExtent
   bool IsInited;
   UInt64 PhyStart;
 
-  UInt32 GetVirtEnd() const { return VirtBlock + Len; }
-  bool IsLenOK() const { return VirtBlock + Len >= VirtBlock; }
+  UInt32 GetVirtEnd() const;
+  bool IsLenOK() const;
 
   void Parse(const Byte *p);
 };
@@ -178,14 +178,8 @@ struct CNode
   UInt32 NumLinksCalced;
 
   Byte Block[kNodeBlockFieldSize];
-  
-  CNode():
-      ParentNode(-1),
-      ItemIndex(-1),
-      SymLinkIndex(-1),
-      DirIndex(0),
-      NumLinksCalced(0)
-        {}
+
+  CNode();
 
   bool IsFlags_HUGE()    const;
   bool IsFlags_EXTENTS() const;
@@ -206,25 +200,12 @@ struct CItem
 
   AString Name;
 
-  CItem():
-      Node(0),
-      ParentNode(-1),
-      SymLinkItemIndex(-1),
-      Type(k_Type_UNKNOWN)
-        {}
-  
-  void Clear()
-  {
-    Node = 0;
-    ParentNode = -1;
-    SymLinkItemIndex = -1;
-    Type = k_Type_UNKNOWN;
-    Name.Empty();
-  }
+  CItem();
 
-  bool IsDir() const { return Type == k_Type_DIR; }
-  // bool IsNotDir() const { return Type != k_Type_DIR && Type != k_Type_UNKNOWN; }
+  void Clear();
 
+  bool IsDir() const;
+  // bool IsNotDir() const;
 };
 
 class CHandler:
