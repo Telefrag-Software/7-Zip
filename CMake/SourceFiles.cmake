@@ -154,6 +154,7 @@ set(SEVEN_ZIP_CPP_SOURCE_FILES
 	7zip/Archive/MslzHandler.h
 	7zip/Archive/PeHandler.cpp
 	7zip/Archive/RpmHandler.cpp
+	7zip/Archive/RpmHandler.h
 	7zip/Archive/SwfHandler.cpp
 	7zip/Archive/VdiHandler.cpp
 	7zip/Archive/ZHandler.cpp

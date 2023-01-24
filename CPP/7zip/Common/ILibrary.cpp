@@ -32,6 +32,7 @@
 #include "../Archive/NtfsHandler.h"
 #include "../Archive/PpmdHandler.h"
 #include "../Archive/QcowHandler.h"
+#include "../Archive/RpmHandler.h"
 #include "../Archive/7z/7zHandler.h"
 #include "../Archive/Cab/CabHandler.h"
 #include "../Archive/Iso/IsoHandler.h"
@@ -183,6 +184,7 @@ void Initialize() {
   NArchive::Ntfs::CHandler::Register();
   NArchive::NPpmd::CHandler::Register();
   NArchive::NQcow::CHandler::Register();
+  NArchive::NRpm::CHandler::Register();
   NArchive::NTar::CHandler::Register();
   NArchive::NWim::CHandler::Register();
   NArchive::NZip::CHandler::Register();
