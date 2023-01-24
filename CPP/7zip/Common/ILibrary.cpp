@@ -35,6 +35,7 @@
 #include "../Archive/RpmHandler.h"
 #include "../Archive/SplitHandler.h"
 #include "../Archive/SquashfsHandler.h"
+#include "../Archive/SwfHandler.h"
 #include "../Archive/7z/7zHandler.h"
 #include "../Archive/Cab/CabHandler.h"
 #include "../Archive/Iso/IsoHandler.h"
@@ -189,6 +190,8 @@ void Initialize() {
   NArchive::NRpm::CHandler::Register();
   NArchive::NSplit::CHandler::Register();
   NArchive::NSquashfs::CHandler::Register();
+  NArchive::NSwf::CHandler::Register();
+  NArchive::NSwfc::CHandler::Register();
   NArchive::NTar::CHandler::Register();
   NArchive::NWim::CHandler::Register();
   NArchive::NZip::CHandler::Register();

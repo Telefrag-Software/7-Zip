@@ -25,16 +25,16 @@
 
 #include "Common/DummyOutStream.h"
 
-// #define SWF_UPDATE
-
 #ifdef SWF_UPDATE
 
 #include "../Compress/LzmaEncoder.h"
 #include "../Compress/ZlibEncoder.h"
 
 #include "Common/HandlerOut.h"
- 
+
 #endif
+
+#include "SwfHandler.h"
 
 using namespace NWindows;
 
@@ -43,9 +43,6 @@ namespace NArchive {
 static const UInt32 kFileSizeMax = (UInt32)1 << 29;
 
 namespace NSwfc {
-
-static const unsigned kHeaderBaseSize = 8;
-static const unsigned kHeaderLzmaSize = 17;
 
 static const Byte SWF_UNCOMPRESSED = 'F';
 static const Byte SWF_COMPRESSED_ZLIB = 'C';
@@ -112,83 +109,51 @@ API_FUNC_static_IsArc IsArc_Swfc(const Byte *p, size_t size)
 }
 }
 
-struct CItem
+UInt32 CItem::GetSize() const { return GetUi32(Buf + 4); }
+UInt32 CItem::GetLzmaPackSize() const { return GetUi32(Buf + 8); }
+UInt32 CItem::GetLzmaDicSize() const { return GetUi32(Buf + 13); }
+
+bool CItem::IsSwf() const { return (Buf[1] == 'W' && Buf[2] == 'S' && Buf[3] < kVerLim); }
+bool CItem::IsUncompressed() const { return Buf[0] == SWF_UNCOMPRESSED; }
+bool CItem::IsZlib() const { return Buf[0] == SWF_COMPRESSED_ZLIB; }
+bool CItem::IsLzma() const { return Buf[0] == SWF_COMPRESSED_LZMA; }
+
+void CItem::MakeUncompressed()
 {
-  Byte Buf[kHeaderLzmaSize];
-  unsigned HeaderSize;
+  Buf[0] = SWF_UNCOMPRESSED;
+  HeaderSize = kHeaderBaseSize;
+}
 
-  UInt32 GetSize() const { return GetUi32(Buf + 4); }
-  UInt32 GetLzmaPackSize() const { return GetUi32(Buf + 8); }
-  UInt32 GetLzmaDicSize() const { return GetUi32(Buf + 13); }
-
-  bool IsSwf() const { return (Buf[1] == 'W' && Buf[2] == 'S' && Buf[3] < kVerLim); }
-  bool IsUncompressed() const { return Buf[0] == SWF_UNCOMPRESSED; }
-  bool IsZlib() const { return Buf[0] == SWF_COMPRESSED_ZLIB; }
-  bool IsLzma() const { return Buf[0] == SWF_COMPRESSED_LZMA; }
-
-  void MakeUncompressed()
-  {
-    Buf[0] = SWF_UNCOMPRESSED;
-    HeaderSize = kHeaderBaseSize;
-  }
-  void MakeZlib()
-  {
-    Buf[0] = SWF_COMPRESSED_ZLIB;
-    if (Buf[3] < SWF_MIN_COMPRESSED_ZLIB_VER)
-      Buf[3] = SWF_MIN_COMPRESSED_ZLIB_VER;
-  }
-  void MakeLzma(UInt32 packSize)
-  {
-    Buf[0] = SWF_COMPRESSED_LZMA;
-    if (Buf[3] < SWF_MIN_COMPRESSED_LZMA_VER)
-      Buf[3] = SWF_MIN_COMPRESSED_LZMA_VER;
-    SetUi32(Buf + 8, packSize);
-    HeaderSize = kHeaderLzmaSize;
-  }
-
-  HRESULT ReadHeader(ISequentialInStream *stream)
-  {
-    HeaderSize = kHeaderBaseSize;
-    return ReadStream_FALSE(stream, Buf, kHeaderBaseSize);
-  }
-  HRESULT WriteHeader(ISequentialOutStream *stream)
-  {
-    return WriteStream(stream, Buf, HeaderSize);
-  }
-};
-
-class CHandler:
-  public IInArchive,
-  public IArchiveOpenSeq,
- #ifdef SWF_UPDATE
-  public IOutArchive,
-  public ISetProperties,
- #endif
-  public CMyUnknownImp
+void CItem::MakeZlib()
 {
-  CItem _item;
-  UInt64 _packSize;
-  bool _packSizeDefined;
-  CMyComPtr<ISequentialInStream> _seqStream;
-  CMyComPtr<IInStream> _stream;
+  Buf[0] = SWF_COMPRESSED_ZLIB;
+  if (Buf[3] < SWF_MIN_COMPRESSED_ZLIB_VER)
+    Buf[3] = SWF_MIN_COMPRESSED_ZLIB_VER;
+}
 
- #ifdef SWF_UPDATE
-  CSingleMethodProps _props;
-  bool _lzmaMode;
-  #endif
+void CItem::MakeLzma(UInt32 packSize)
+{
+  Buf[0] = SWF_COMPRESSED_LZMA;
+  if (Buf[3] < SWF_MIN_COMPRESSED_LZMA_VER)
+    Buf[3] = SWF_MIN_COMPRESSED_LZMA_VER;
+  SetUi32(Buf + 8, packSize);
+  HeaderSize = kHeaderLzmaSize;
+}
 
-public:
- #ifdef SWF_UPDATE
-  MY_UNKNOWN_IMP4(IInArchive, IArchiveOpenSeq, IOutArchive, ISetProperties)
-  CHandler(): _lzmaMode(false) {}
-  INTERFACE_IOutArchive(;)
-  STDMETHOD(SetProperties)(const wchar_t * const *names, const PROPVARIANT *values, UInt32 numProps);
- #else
-  MY_UNKNOWN_IMP2(IInArchive, IArchiveOpenSeq)
- #endif
-  INTERFACE_IInArchive(;)
-  STDMETHOD(OpenSeq)(ISequentialInStream *stream);
-};
+HRESULT CItem::ReadHeader(ISequentialInStream *stream)
+{
+  HeaderSize = kHeaderBaseSize;
+  return ReadStream_FALSE(stream, Buf, kHeaderBaseSize);
+}
+
+HRESULT CItem::WriteHeader(ISequentialOutStream *stream)
+{
+  return WriteStream(stream, Buf, HeaderSize);
+}
+
+#ifdef SWF_UPDATE
+CHandler::CHandler(): _lzmaMode(false) {}
+#endif // SWF_UPDATE
 
 static const Byte kProps[] =
 {
@@ -302,17 +267,7 @@ STDMETHODIMP CHandler::Close()
   return S_OK;
 }
 
-class CCompressProgressInfoImp:
-  public ICompressProgressInfo,
-  public CMyUnknownImp
-{
-  CMyComPtr<IArchiveOpenCallback> Callback;
-public:
-  UInt64 Offset;
-  MY_UNKNOWN_IMP1(ICompressProgressInfo)
-  STDMETHOD(SetRatioInfo)(const UInt64 *inSize, const UInt64 *outSize);
-  void Init(IArchiveOpenCallback *callback) { Callback = callback; }
-};
+void CCompressProgressInfoImp::Init(IArchiveOpenCallback *callback) { Callback = callback; }
 
 STDMETHODIMP CCompressProgressInfoImp::SetRatioInfo(const UInt64 *inSize, const UInt64 * /* outSize */)
 {
@@ -602,42 +557,38 @@ static const Byte k_Signature[] = {
     3, 'C', 'W', 'S',
     3, 'Z', 'W', 'S' };
 
-REGISTER_ARC_I(
-  "SWFc", "swf", "~.swf", 0xD8,
-  k_Signature,
-  0,
+static IInArchive * CreateArc() {
+  return new CHandler();
+}
+
+static const CArcInfo s_arcInfo = {
   NArcInfoFlags::kMultiSignature,
-  IsArc_Swfc)
+  0xD8,
+  sizeof(k_Signature) / sizeof(k_Signature[0]),
+  0,
+  k_Signature,
+  "SWFc",
+  "swf",
+  "~.swf",
+  CreateArc,
+  0,
+  IsArc_Swfc
+};
+
+void CHandler::Register() {
+  static bool s_registered = false;
+
+  if(!s_registered) {
+    RegisterArc(&s_arcInfo);
+    s_registered = true;
+  }
+}
 
 }
 
 namespace NSwf {
 
 static const unsigned kNumTagsMax = 1 << 23;
-
-struct CTag
-{
-  UInt32 Type;
-  CByteBuffer Buf;
-};
-
-class CHandler:
-  public IInArchive,
-  public IArchiveOpenSeq,
-  public CMyUnknownImp
-{
-  CObjectVector<CTag> _tags;
-  NSwfc::CItem _item;
-  UInt64 _phySize;
-
-  HRESULT OpenSeq3(ISequentialInStream *stream, IArchiveOpenCallback *callback);
-  HRESULT OpenSeq2(ISequentialInStream *stream, IArchiveOpenCallback *callback);
-public:
-  MY_UNKNOWN_IMP2(IInArchive, IArchiveOpenSeq)
-  INTERFACE_IInArchive(;)
-
-  STDMETHOD(OpenSeq)(ISequentialInStream *stream);
-};
 
 static const Byte kProps[] =
 {
@@ -822,16 +773,7 @@ static UInt32 Read32(CInBuffer &stream)
   return res;
 }
 
-struct CBitReader
-{
-  CInBuffer *stream;
-  unsigned NumBits;
-  Byte Val;
-
-  CBitReader(): NumBits(0), Val(0) {}
-
-  UInt32 ReadBits(unsigned numBits);
-};
+CBitReader::CBitReader(): NumBits(0), Val(0) {}
 
 UInt32 CBitReader::ReadBits(unsigned numBits)
 {
@@ -992,11 +934,31 @@ STDMETHODIMP CHandler::Extract(const UInt32 *indices, UInt32 numItems,
 
 static const Byte k_Signature[] = { 'F', 'W', 'S' };
 
-REGISTER_ARC_I(
-  "SWF", "swf", 0, 0xD7,
-  k_Signature,
-  0,
+static IInArchive * CreateArc() {
+  return new CHandler();
+}
+
+static const CArcInfo s_arcInfo = {
   NArcInfoFlags::kKeepName,
-  NSwfc::IsArc_Swf)
+  0xD7,
+  sizeof(k_Signature) / sizeof(k_Signature[0]),
+  0,
+  k_Signature,
+  "SWF",
+  "swf",
+  0,
+  CreateArc,
+  0,
+  NSwfc::IsArc_Swf
+};
+
+void CHandler::Register() {
+  static bool s_registered = false;
+
+  if(!s_registered) {
+    RegisterArc(&s_arcInfo);
+    s_registered = true;
+  }
+}
 
 }}
