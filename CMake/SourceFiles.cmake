@@ -177,6 +177,7 @@ set(SEVEN_ZIP_CPP_SOURCE_FILES
 	7zip/Archive/PpmdHandler.cpp
 	7zip/Archive/PpmdHandler.h
 	7zip/Archive/SplitHandler.cpp
+	7zip/Archive/SplitHandler.h
 	7zip/Archive/VhdHandler.cpp
 	7zip/Archive/XarHandler.cpp
 	7zip/Archive/Common/CoderMixer2.cpp
