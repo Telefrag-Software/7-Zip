@@ -18,6 +18,8 @@
 
 #include "../Compress/CopyCoder.h"
 
+#include "MachoHandler.h"
+
 static UInt32 Get32(const Byte *p, bool be) { if (be) return GetBe32(p); return GetUi32(p); }
 static UInt64 Get64(const Byte *p, bool be) { if (be) return GetBe64(p); return GetUi64(p); }
 
@@ -97,20 +99,6 @@ static const char * const g_SectTypes[] =
   , "16BYTE_LITERALS"
 };
 
-enum EFileType
-{
-  kType_OBJECT = 1,
-  kType_EXECUTE,
-  kType_FVMLIB,
-  kType_CORE,
-  kType_PRELOAD,
-  kType_DYLIB,
-  kType_DYLINKER,
-  kType_BUNDLE,
-  kType_DYLIB_STUB,
-  kType_DSYM
-};
-
 static const char * const g_FileTypes[] =
 {
     "0"
@@ -171,58 +159,11 @@ static const CUInt32PCharPair g_Flags[] =
   {  8, "LOC_RELOC" }
 };
 
-static const unsigned kNameSize = 16;
+CSection::CSection(): IsDummy(false) {}
+// UInt64 GetPackSize() const { return Flags == SECT_ATTR_ZEROFILL ? 0 : Size; }
+UInt64 CSection::GetPackSize() const { return PSize; }
 
-struct CSegment
-{
-  char Name[kNameSize];
-};
-
-struct CSection
-{
-  char Name[kNameSize];
-  char SegName[kNameSize];
-  UInt64 Va;
-  UInt64 Pa;
-  UInt64 VSize;
-  UInt64 PSize;
-
-  UInt32 Flags;
-  int SegmentIndex;
-
-  bool IsDummy;
-
-  CSection(): IsDummy(false) {}
-  // UInt64 GetPackSize() const { return Flags == SECT_ATTR_ZEROFILL ? 0 : Size; }
-  UInt64 GetPackSize() const { return PSize; }
-};
-
-
-class CHandler:
-  public IInArchive,
-  public IArchiveAllowTail,
-  public CMyUnknownImp
-{
-  CMyComPtr<IInStream> _inStream;
-  CObjectVector<CSegment> _segments;
-  CObjectVector<CSection> _sections;
-  bool _allowTail;
-  bool _mode64;
-  bool _be;
-  UInt32 _cpuType;
-  UInt32 _cpuSubType;
-  UInt32 _type;
-  UInt32 _flags;
-  UInt32 _headersSize;
-  UInt64 _totalSize;
-
-  HRESULT Open2(ISequentialInStream *stream);
-public:
-  MY_UNKNOWN_IMP2(IInArchive, IArchiveAllowTail)
-  INTERFACE_IInArchive(;)
-  STDMETHOD(AllowTail)(Int32 allowTail);
-  CHandler(): _allowTail(false) {}
-};
+CHandler::CHandler(): _allowTail(false) {}
 
 static const Byte kArcProps[] =
 {
@@ -657,12 +598,31 @@ static const Byte k_Signature[] = {
   4, 0xFE, 0xED, 0xFA, 0xCE,
   4, 0xFE, 0xED, 0xFA, 0xCF };
 
-REGISTER_ARC_I(
-  "MachO", "macho", 0, 0xDF,
-  k_Signature,
+static IInArchive * CreateArc() {
+  return new CHandler();
+}
+
+static const CArcInfo s_arcInfo = {
+  NArcInfoFlags::kMultiSignature | NArcInfoFlags::kPreArc,
+  0xDF,
+  sizeof(k_Signature) / sizeof(k_Signature[0]),
   0,
-  NArcInfoFlags::kMultiSignature |
-  NArcInfoFlags::kPreArc,
-  NULL)
+  k_Signature,
+  "MachO",
+  "macho",
+  0,
+  CreateArc,
+  0,
+  0
+};
+
+void CHandler::Register() {
+  static bool s_registered = false;
+
+  if(!s_registered) {
+    RegisterArc(&s_arcInfo);
+    s_registered = true;
+  }
+}
 
 }}
