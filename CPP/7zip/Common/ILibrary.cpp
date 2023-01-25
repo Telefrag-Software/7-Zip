@@ -201,6 +201,7 @@ void Initialize() {
   NArchive::NPpmd::CHandler::Register();
   NArchive::NQcow::CHandler::Register();
   NArchive::NRar::CHandler::Register();
+  NArchive::NRar5::CHandler::Register();
   NArchive::NRpm::CHandler::Register();
   NArchive::NSplit::CHandler::Register();
   NArchive::NSquashfs::CHandler::Register();

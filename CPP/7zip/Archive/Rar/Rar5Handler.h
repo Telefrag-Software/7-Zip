@@ -404,12 +404,14 @@ private:
       IArchiveOpenCallback *openCallback);
 
 public:
+  static void Register();
+
   MY_QUERYINTERFACE_BEGIN2(IInArchive)
   MY_QUERYINTERFACE_ENTRY(IArchiveGetRawProps)
   QUERY_ENTRY_ISetCompressCodecsInfo
   MY_QUERYINTERFACE_END
   MY_ADDREF_RELEASE
-  
+
   INTERFACE_IInArchive(;)
   INTERFACE_IArchiveGetRawProps(;)
 

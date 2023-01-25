@@ -2972,12 +2972,32 @@ STDMETHODIMP CHandler::Extract(const UInt32 *indices, UInt32 numItems,
 
 IMPL_ISetCompressCodecsInfo
 
-REGISTER_ARC_I(
-  "Rar5", "rar r00", 0, 0xCC,
-  kMarker,
-  0,
+static IInArchive * CreateArc() {
+  return new CHandler();
+}
+
+static const CArcInfo s_arcInfo = {
   NArcInfoFlags::kFindSignature,
-  NULL)
+  0xCC,
+  sizeof(kMarker) / sizeof(kMarker[0]),
+  0,
+  kMarker,
+  "Rar5",
+  "rar r00",
+  0,
+  CreateArc,
+  0,
+  0
+};
+
+void CHandler::Register() {
+  static bool s_registered = false;
+
+  if(!s_registered) {
+    RegisterArc(&s_arcInfo);
+    s_registered = true;
+  }
+}
 
 }}
 
