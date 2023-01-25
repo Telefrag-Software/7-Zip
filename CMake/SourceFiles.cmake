@@ -114,7 +114,6 @@ set(SEVEN_ZIP_CPP_SOURCE_FILES
 	7zip/Archive/GptHandler.h
 	7zip/Archive/HfsHandler.cpp
 	7zip/Archive/HfsHandler.h
-	7zip/Archive/makefile
 	7zip/Archive/QcowHandler.cpp
 	7zip/Archive/QcowHandler.h
 	7zip/Archive/SquashfsHandler.cpp
@@ -225,7 +224,6 @@ set(SEVEN_ZIP_CPP_SOURCE_FILES
 	7zip/Archive/7z/7zProperties.h
 	7zip/Archive/7z/7zSpecStream.cpp
 	7zip/Archive/7z/7zUpdate.cpp
-	7zip/Archive/7z/makefile
 	7zip/Archive/7z/StdAfx.cpp
 	7zip/Archive/7z/7zCompressionMode.h
 	7zip/Archive/7z/7zDecode.h
@@ -405,7 +403,6 @@ set(SEVEN_ZIP_CPP_SOURCE_FILES
 	7zip/Compress/LzfseDecoder.cpp
 	7zip/Compress/Lzma2Encoder.h
 	7zip/Compress/LzmsDecoder.cpp
-	7zip/Compress/makefile
 	7zip/Compress/PpmdZip.cpp
 	7zip/Compress/Rar2Decoder.h
 	7zip/Compress/RarCodecsRegister.cpp
