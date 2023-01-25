@@ -49,6 +49,7 @@
 #include "../Archive/Iso/IsoHandler.h"
 #include "../Archive/Nsis/NsisHandler.h"
 #include "../Archive/Tar/TarHandler.h"
+#include "../Archive/Udf/UdfHandler.h"
 #include "../Archive/Wim/WimHandler.h"
 #include "../Archive/Zip/ZipHandler.h"
 #include "../Compress/BcjCoder.h"
@@ -202,6 +203,7 @@ void Initialize() {
   NArchive::NSwf::CHandler::Register();
   NArchive::NSwfc::CHandler::Register();
   NArchive::NTar::CHandler::Register();
+  NArchive::NUdf::CHandler::Register();
   NArchive::NUefi::CHandler::Register();
   NArchive::NVdi::CHandler::Register();
   NArchive::NVhd::CHandler::Register();
