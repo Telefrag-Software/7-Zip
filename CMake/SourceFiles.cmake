@@ -160,6 +160,7 @@ set(SEVEN_ZIP_CPP_SOURCE_FILES
 	7zip/Archive/SwfHandler.cpp
 	7zip/Archive/SwfHandler.h
 	7zip/Archive/VdiHandler.cpp
+	7zip/Archive/VdiHandler.h
 	7zip/Archive/ZHandler.cpp
 	7zip/Archive/Base64Handler.cpp
 	7zip/Archive/Base64Handler.h

@@ -37,6 +37,7 @@
 #include "../Archive/SquashfsHandler.h"
 #include "../Archive/SwfHandler.h"
 #include "../Archive/UefiHandler.h"
+#include "../Archive/VdiHandler.h"
 #include "../Archive/7z/7zHandler.h"
 #include "../Archive/Cab/CabHandler.h"
 #include "../Archive/Iso/IsoHandler.h"
@@ -195,6 +196,7 @@ void Initialize() {
   NArchive::NSwfc::CHandler::Register();
   NArchive::NTar::CHandler::Register();
   NArchive::NUefi::CHandler::Register();
+  NArchive::NVdi::CHandler::Register();
   NArchive::NWim::CHandler::Register();
   NArchive::NZip::CHandler::Register();
 
