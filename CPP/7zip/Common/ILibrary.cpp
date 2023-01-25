@@ -79,6 +79,8 @@
 #include "RegisterArc.h"
 #include "RegisterCodec.h"
 
+#include <mutex>
+
 static const unsigned kNumArcsMax = 64;
 static unsigned g_NumArcs = 0;
 static unsigned g_DefaultArcIndex = 0;
@@ -133,98 +135,94 @@ int FindFormatCalssId(const GUID *clsid)
 namespace SevenZip {
 
 void Initialize() {
-  static bool s_initialized = false;
+  static std::once_flag s_initializedFlag;
 
-  if(s_initialized) {
-    return;
-  }
+  std::call_once(s_initializedFlag, []() {
+    // Register Filters
+    NCompress::NBcj::CCoder::Register();
+    NCompress::NByteSwap::CByteSwap2::Register();
+    NCompress::NByteSwap::CByteSwap4::Register();
+    NCompress::NDelta::CDecoder::Register();
+    NCrypto::N7z::CDecoder::Register();
+    NCrypto::CAesCoder::Register();
 
-  // Register Filters
-  NCompress::NBcj::CCoder::Register();
-  NCompress::NByteSwap::CByteSwap2::Register();
-  NCompress::NByteSwap::CByteSwap4::Register();
-  NCompress::NDelta::CDecoder::Register();
-  NCrypto::N7z::CDecoder::Register();
-  NCrypto::CAesCoder::Register();
+    // Register Hashers
+    NHash::CBlake2spHasher::Register();
+    NHash::CCksumHasher::Register();
+    NHash::CCrcHasher::Register();
+    NHash::CSha1Hasher::Register();
+    NHash::CSha256Hasher::Register();
+    NHash::CXzCrc64Hasher::Register();
 
-  // Register Hashers
-  NHash::CBlake2spHasher::Register();
-  NHash::CCksumHasher::Register();
-  NHash::CCrcHasher::Register();
-  NHash::CSha1Hasher::Register();
-  NHash::CSha256Hasher::Register();
-  NHash::CXzCrc64Hasher::Register();
+    // Register Decoders & Encoders
+    NCompress::NBcj2::CEncoder::Register();
+    NCompress::NBranch::CCoder::Register();
+    NCompress::NBZip2::CDecoder::Register();
+    NCompress::CCopyCoder::Register();
+    NCompress::NDeflate::NDecoder::CCOMCoder::Register();
+    NCompress::NDeflate::NDecoder::CCOMCoder64::Register();
+    NCompress::NLzma::CDecoder::Register();
+    NCompress::NLzma2::CDecoder::Register();
+    NCompress::NPpmd::CDecoder::Register();
+    NCompress::NRar1::CDecoder::Register();
+    NCompress::NRar2::CDecoder::Register();
+    NCompress::NRar3::CDecoder::Register();
+    NCompress::NRar5::CDecoder::Register();
 
-  // Register Decoders & Encoders
-  NCompress::NBcj2::CEncoder::Register();
-  NCompress::NBranch::CCoder::Register();
-  NCompress::NBZip2::CDecoder::Register();
-  NCompress::CCopyCoder::Register();
-  NCompress::NDeflate::NDecoder::CCOMCoder::Register();
-  NCompress::NDeflate::NDecoder::CCOMCoder64::Register();
-  NCompress::NLzma::CDecoder::Register();
-  NCompress::NLzma2::CDecoder::Register();
-  NCompress::NPpmd::CDecoder::Register();
-  NCompress::NRar1::CDecoder::Register();
-  NCompress::NRar2::CDecoder::Register();
-  NCompress::NRar3::CDecoder::Register();
-  NCompress::NRar5::CDecoder::Register();
-
-  // Register Archives
-  NArchive::N7z::CHandler::Register();
-  NArchive::NApm::CHandler::Register();
-  NArchive::NAr::CHandler::Register();
-  NArchive::NArj::CHandler::Register();
-  NArchive::NBase64::CHandler::Register();
-  NArchive::NBz2::CHandler::Register();
-  NArchive::NCab::CHandler::Register();
-  NArchive::NChm::CHandler::Register();
-  NArchive::NCom::CHandler::Register();
-  NArchive::NCpio::CHandler::Register();
-  NArchive::NCramfs::CHandler::Register();
-  NArchive::NDmg::CHandler::Register();
-  NArchive::NElf::CHandler::Register();
-  NArchive::NExt::CHandler::Register();
-  NArchive::NFat::CHandler::Register();
-  NArchive::NFlv::CHandler::Register();
-  NArchive::NGpt::CHandler::Register();
-  NArchive::NGz::CHandler::Register();
-  NArchive::NHfs::CHandler::Register();
-  NArchive::NIhex::CHandler::Register();
-  NArchive::NIso::CHandler::Register();
-  NArchive::NLzh::CHandler::Register();
-  NArchive::NLzma::CHandler::Register();
-  NArchive::NMacho::CHandler::Register();
-  NArchive::NMbr::CHandler::Register();
-  NArchive::NMslz::CHandler::Register();
-  NArchive::NMub::CHandler::Register();
-  NArchive::NNsis::CHandler::Register();
-  NArchive::Ntfs::CHandler::Register();
-  NArchive::NPe::CHandler::Register();
-  NArchive::NTe::CHandler::Register();
-  NArchive::NPpmd::CHandler::Register();
-  NArchive::NQcow::CHandler::Register();
-  NArchive::NRar::CHandler::Register();
-  NArchive::NRar5::CHandler::Register();
-  NArchive::NRpm::CHandler::Register();
-  NArchive::NSplit::CHandler::Register();
-  NArchive::NSquashfs::CHandler::Register();
-  NArchive::NSwf::CHandler::Register();
-  NArchive::NSwfc::CHandler::Register();
-  NArchive::NTar::CHandler::Register();
-  NArchive::NUdf::CHandler::Register();
-  NArchive::NUefi::CHandler::Register();
-  NArchive::NVdi::CHandler::Register();
-  NArchive::NVhd::CHandler::Register();
-  NArchive::NVhdx::CHandler::Register();
-  NArchive::NVmdk::CHandler::Register();
-  NArchive::NWim::CHandler::Register();
-  NArchive::NXar::CHandler::Register();
-  NArchive::NXz::CHandler::Register();
-  NArchive::NZ::CHandler::Register();
-  NArchive::NZip::CHandler::Register();
-
-  s_initialized = true;
+    // Register Archives
+    NArchive::N7z::CHandler::Register();
+    NArchive::NApm::CHandler::Register();
+    NArchive::NAr::CHandler::Register();
+    NArchive::NArj::CHandler::Register();
+    NArchive::NBase64::CHandler::Register();
+    NArchive::NBz2::CHandler::Register();
+    NArchive::NCab::CHandler::Register();
+    NArchive::NChm::CHandler::Register();
+    NArchive::NCom::CHandler::Register();
+    NArchive::NCpio::CHandler::Register();
+    NArchive::NCramfs::CHandler::Register();
+    NArchive::NDmg::CHandler::Register();
+    NArchive::NElf::CHandler::Register();
+    NArchive::NExt::CHandler::Register();
+    NArchive::NFat::CHandler::Register();
+    NArchive::NFlv::CHandler::Register();
+    NArchive::NGpt::CHandler::Register();
+    NArchive::NGz::CHandler::Register();
+    NArchive::NHfs::CHandler::Register();
+    NArchive::NIhex::CHandler::Register();
+    NArchive::NIso::CHandler::Register();
+    NArchive::NLzh::CHandler::Register();
+    NArchive::NLzma::CHandler::Register();
+    NArchive::NMacho::CHandler::Register();
+    NArchive::NMbr::CHandler::Register();
+    NArchive::NMslz::CHandler::Register();
+    NArchive::NMub::CHandler::Register();
+    NArchive::NNsis::CHandler::Register();
+    NArchive::Ntfs::CHandler::Register();
+    NArchive::NPe::CHandler::Register();
+    NArchive::NTe::CHandler::Register();
+    NArchive::NPpmd::CHandler::Register();
+    NArchive::NQcow::CHandler::Register();
+    NArchive::NRar::CHandler::Register();
+    NArchive::NRar5::CHandler::Register();
+    NArchive::NRpm::CHandler::Register();
+    NArchive::NSplit::CHandler::Register();
+    NArchive::NSquashfs::CHandler::Register();
+    NArchive::NSwf::CHandler::Register();
+    NArchive::NSwfc::CHandler::Register();
+    NArchive::NTar::CHandler::Register();
+    NArchive::NUdf::CHandler::Register();
+    NArchive::NUefi::CHandler::Register();
+    NArchive::NVdi::CHandler::Register();
+    NArchive::NVhd::CHandler::Register();
+    NArchive::NVhdx::CHandler::Register();
+    NArchive::NVmdk::CHandler::Register();
+    NArchive::NWim::CHandler::Register();
+    NArchive::NXar::CHandler::Register();
+    NArchive::NXz::CHandler::Register();
+    NArchive::NZ::CHandler::Register();
+    NArchive::NZip::CHandler::Register();
+  });
 }
 
 HRESULT CreateArchiver(const GUID *clsid, const GUID *iid, void **outObject)
