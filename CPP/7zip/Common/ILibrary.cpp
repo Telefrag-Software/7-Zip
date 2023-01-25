@@ -42,6 +42,7 @@
 #include "../Archive/VhdxHandler.h"
 #include "../Archive/VmdkHandler.h"
 #include "../Archive/XarHandler.h"
+#include "../Archive/ZHandler.h"
 #include "../Archive/7z/7zHandler.h"
 #include "../Archive/Cab/CabHandler.h"
 #include "../Archive/Iso/IsoHandler.h"
@@ -206,6 +207,7 @@ void Initialize() {
   NArchive::NVmdk::CHandler::Register();
   NArchive::NWim::CHandler::Register();
   NArchive::NXar::CHandler::Register();
+  NArchive::NZ::CHandler::Register();
   NArchive::NZip::CHandler::Register();
 
   s_initialized = true;

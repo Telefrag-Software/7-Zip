@@ -164,6 +164,7 @@ set(SEVEN_ZIP_CPP_SOURCE_FILES
 	7zip/Archive/VdiHandler.cpp
 	7zip/Archive/VdiHandler.h
 	7zip/Archive/ZHandler.cpp
+	7zip/Archive/ZHandler.h
 	7zip/Archive/Base64Handler.cpp
 	7zip/Archive/Base64Handler.h
 	7zip/Archive/ComHandler.cpp
