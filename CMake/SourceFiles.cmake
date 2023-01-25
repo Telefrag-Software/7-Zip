@@ -120,6 +120,7 @@ set(SEVEN_ZIP_CPP_SOURCE_FILES
 	7zip/Archive/SquashfsHandler.cpp
 	7zip/Archive/SquashfsHandler.h
 	7zip/Archive/VhdxHandler.cpp
+	7zip/Archive/VhdxHandler.h
 	7zip/Archive/XzHandler.cpp
 	7zip/Archive/ApmHandler.cpp
 	7zip/Archive/ApmHandler.h

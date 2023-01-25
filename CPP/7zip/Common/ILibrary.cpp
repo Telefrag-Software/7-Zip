@@ -39,6 +39,7 @@
 #include "../Archive/UefiHandler.h"
 #include "../Archive/VdiHandler.h"
 #include "../Archive/VhdHandler.h"
+#include "../Archive/VhdxHandler.h"
 #include "../Archive/7z/7zHandler.h"
 #include "../Archive/Cab/CabHandler.h"
 #include "../Archive/Iso/IsoHandler.h"
@@ -199,6 +200,7 @@ void Initialize() {
   NArchive::NUefi::CHandler::Register();
   NArchive::NVdi::CHandler::Register();
   NArchive::NVhd::CHandler::Register();
+  NArchive::NVhdx::CHandler::Register();
   NArchive::NWim::CHandler::Register();
   NArchive::NZip::CHandler::Register();
 
