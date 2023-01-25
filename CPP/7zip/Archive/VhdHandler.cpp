@@ -14,6 +14,8 @@
 
 #include "HandlerCont.h"
 
+#include "VhdHandler.h"
+
 #define Get16(p) GetBe16(p)
 #define Get32(p) GetBe32(p)
 #define Get64(p) GetBe64(p)
@@ -27,7 +29,7 @@ namespace NArchive {
 namespace NVhd {
 
 #define SIGNATURE { 'c', 'o', 'n', 'e', 'c', 't', 'i', 'x', 0, 0 }
-  
+
 static const unsigned kSignatureSize = 10;
 static const Byte kSignature[kSignatureSize] = SIGNATURE;
 
@@ -46,31 +48,12 @@ static const char * const kDiskTypes[] =
   , "Differencing"
 };
 
-struct CFooter
-{
-  // UInt32 Features;
-  // UInt32 FormatVersion;
-  UInt64 DataOffset;
-  UInt32 CTime;
-  UInt32 CreatorApp;
-  UInt32 CreatorVersion;
-  UInt32 CreatorHostOS;
-  // UInt64 OriginalSize;
-  UInt64 CurrentSize;
-  UInt32 DiskGeometry;
-  UInt32 Type;
-  Byte Id[16];
-  Byte SavedState;
-
-  bool IsFixed() const { return Type == kDiskType_Fixed; }
-  bool ThereIsDynamic() const { return Type == kDiskType_Dynamic || Type == kDiskType_Diff; }
-  // bool IsSupported() const { return Type == kDiskType_Fixed || Type == kDiskType_Dynamic || Type == kDiskType_Diff; }
-  UInt32 NumCyls() const { return DiskGeometry >> 16; }
-  UInt32 NumHeads() const { return (DiskGeometry >> 8) & 0xFF; }
-  UInt32 NumSectorsPerTrack() const { return DiskGeometry & 0xFF; }
-  void AddTypeString(AString &s) const;
-  bool Parse(const Byte *p);
-};
+bool CFooter::IsFixed() const { return Type == kDiskType_Fixed; }
+bool CFooter::ThereIsDynamic() const { return Type == kDiskType_Dynamic || Type == kDiskType_Diff; }
+// bool CFooter::IsSupported() const { return Type == kDiskType_Fixed || Type == kDiskType_Dynamic || Type == kDiskType_Diff; }
+UInt32 CFooter::NumCyls() const { return DiskGeometry >> 16; }
+UInt32 CFooter::NumHeads() const { return (DiskGeometry >> 8) & 0xFF; }
+UInt32 CFooter::NumSectorsPerTrack() const { return DiskGeometry & 0xFF; }
 
 void CFooter::AddTypeString(AString &s) const
 {
@@ -125,50 +108,27 @@ bool CFooter::Parse(const Byte *p)
   return CheckBlock(p, kHeaderSize, 0x40, 0x55);
 }
 
-struct CParentLocatorEntry
+bool CParentLocatorEntry::Parse(const Byte *p)
 {
-  UInt32 Code;
-  UInt32 DataSpace;
-  UInt32 DataLen;
-  UInt64 DataOffset;
+  G32(0x00, Code);
+  G32(0x04, DataSpace);
+  G32(0x08, DataLen);
+  G64(0x10, DataOffset);
+  return Get32(p + 0x0C) == 0; // Reserved
+}
 
-  bool Parse(const Byte *p)
-  {
-    G32(0x00, Code);
-    G32(0x04, DataSpace);
-    G32(0x08, DataLen);
-    G64(0x10, DataOffset);
-    return Get32(p + 0x0C) == 0; // Reserved
-  }
-};
-
-struct CDynHeader
+UInt32 CDynHeader::NumBitMapSectors() const
 {
-  // UInt64 DataOffset;
-  UInt64 TableOffset;
-  // UInt32 HeaderVersion;
-  UInt32 NumBlocks;
-  unsigned BlockSizeLog;
-  UInt32 ParentTime;
-  Byte ParentId[16];
-  bool RelativeNameWasUsed;
-  UString ParentName;
-  UString RelativeParentNameFromLocator;
-  CParentLocatorEntry ParentLocators[8];
+  UInt32 numSectorsInBlock = (1 << (BlockSizeLog - kSectorSize_Log));
+  return (numSectorsInBlock + kSectorSize * 8 - 1) / (kSectorSize * 8);
+}
 
-  bool Parse(const Byte *p);
-  UInt32 NumBitMapSectors() const
-  {
-    UInt32 numSectorsInBlock = (1 << (BlockSizeLog - kSectorSize_Log));
-    return (numSectorsInBlock + kSectorSize * 8 - 1) / (kSectorSize * 8);
-  }
-  void Clear()
-  {
-    RelativeNameWasUsed = false;
-    ParentName.Empty();
-    RelativeParentNameFromLocator.Empty();
-  }
-};
+void CDynHeader::Clear()
+{
+  RelativeNameWasUsed = false;
+  ParentName.Empty();
+  RelativeParentNameFromLocator.Empty();
+}
 
 bool CDynHeader::Parse(const Byte *p)
 {
@@ -214,107 +174,76 @@ bool CDynHeader::Parse(const Byte *p)
   return CheckBlock(p, 1024, 0x24, 0x240 + 8 * 24);
 }
 
-class CHandler: public CHandlerImg
+void CHandler::AddErrorMessage(const char *message, const wchar_t *name)
 {
-  UInt64 _posInArcLimit;
-  UInt64 _startOffset;
-  UInt64 _phySize;
+  if (!_errorMessage.IsEmpty())
+    _errorMessage.Add_LF();
+  _errorMessage += message;
+  if (name)
+    _errorMessage += name;
+}
 
-  CFooter Footer;
-  CDynHeader Dyn;
-  CRecordVector<UInt32> Bat;
-  CByteBuffer BitMap;
-  UInt32 BitMapTag;
-  UInt32 NumUsedBlocks;
-  CMyComPtr<IInStream> ParentStream;
-  CHandler *Parent;
-  UInt64 NumLevels;
-  UString _errorMessage;
-  // bool _unexpectedEnd;
+void CHandler::UpdatePhySize(UInt64 value)
+{
+  if (_phySize < value)
+    _phySize = value;
+}
 
-  void AddErrorMessage(const char *message, const wchar_t *name = NULL)
+void CHandler::Reset_PosInArc() { _posInArc = (UInt64)0 - 1; }
+
+bool CHandler::NeedParent() const { return Footer.Type == kDiskType_Diff; }
+UInt64 CHandler::GetPackSize() const
+  { return Footer.ThereIsDynamic() ? ((UInt64)NumUsedBlocks << Dyn.BlockSizeLog) : Footer.CurrentSize; }
+
+UString CHandler::GetParentSequence() const
+{
+  const CHandler *p = this;
+  UString res;
+  while (p && p->NeedParent())
   {
-    if (!_errorMessage.IsEmpty())
-      _errorMessage.Add_LF();
-    _errorMessage += message;
-    if (name)
-      _errorMessage += name;
-  }
-
-  void UpdatePhySize(UInt64 value)
-  {
-    if (_phySize < value)
-      _phySize = value;
-  }
-
-  void Reset_PosInArc() { _posInArc = (UInt64)0 - 1; }
-  HRESULT Seek2(UInt64 offset);
-  HRESULT InitAndSeek();
-  HRESULT ReadPhy(UInt64 offset, void *data, UInt32 size);
-
-  bool NeedParent() const { return Footer.Type == kDiskType_Diff; }
-  UInt64 GetPackSize() const
-    { return Footer.ThereIsDynamic() ? ((UInt64)NumUsedBlocks << Dyn.BlockSizeLog) : Footer.CurrentSize; }
-
-  UString GetParentSequence() const
-  {
-    const CHandler *p = this;
-    UString res;
-    while (p && p->NeedParent())
+    if (!res.IsEmpty())
+      res += " -> ";
+    UString mainName;
+    UString anotherName;
+    if (Dyn.RelativeNameWasUsed)
     {
-      if (!res.IsEmpty())
-        res += " -> ";
-      UString mainName;
-      UString anotherName;
-      if (Dyn.RelativeNameWasUsed)
-      {
-        mainName = p->Dyn.RelativeParentNameFromLocator;
-        anotherName = p->Dyn.ParentName;
-      }
-      else
-      {
-        mainName = p->Dyn.ParentName;
-        anotherName = p->Dyn.RelativeParentNameFromLocator;
-      }
-      res += mainName;
-      if (mainName != anotherName && !anotherName.IsEmpty())
-      {
-        res.Add_Space();
-        res += '(';
-        res += anotherName;
-        res += ')';
-      }
-      p = p->Parent;
+      mainName = p->Dyn.RelativeParentNameFromLocator;
+      anotherName = p->Dyn.ParentName;
     }
-    return res;
-  }
-
-  bool AreParentsOK() const
-  {
-    const CHandler *p = this;
-    while (p->NeedParent())
+    else
     {
-      p = p->Parent;
-      if (!p)
-        return false;
+      mainName = p->Dyn.ParentName;
+      anotherName = p->Dyn.RelativeParentNameFromLocator;
     }
-    return true;
+    res += mainName;
+    if (mainName != anotherName && !anotherName.IsEmpty())
+    {
+      res.Add_Space();
+      res += '(';
+      res += anotherName;
+      res += ')';
+    }
+    p = p->Parent;
   }
+  return res;
+}
 
-  HRESULT Open3();
-  HRESULT Open2(IInStream *stream, CHandler *child, IArchiveOpenCallback *openArchiveCallback, unsigned level);
-  HRESULT Open2(IInStream *stream, IArchiveOpenCallback *openArchiveCallback)
+bool CHandler::AreParentsOK() const
+{
+  const CHandler *p = this;
+  while (p->NeedParent())
   {
-    return Open2(stream, NULL, openArchiveCallback, 0);
+    p = p->Parent;
+    if (!p)
+      return false;
   }
-  void CloseAtError();
+  return true;
+}
 
-public:
-  INTERFACE_IInArchive_Img(;)
-
-  STDMETHOD(GetStream)(UInt32 index, ISequentialInStream **stream);
-  STDMETHOD(Read)(void *data, UInt32 size, UInt32 *processedSize);
-};
+HRESULT CHandler::Open2(IInStream *stream, IArchiveOpenCallback *openArchiveCallback)
+{
+  return Open2(stream, NULL, openArchiveCallback, 0);
+}
 
 HRESULT CHandler::Seek2(UInt64 offset) { return Stream->Seek(_startOffset + offset, STREAM_SEEK_SET, NULL); }
 
@@ -935,11 +864,31 @@ STDMETHODIMP CHandler::GetStream(UInt32 /* index */, ISequentialInStream **strea
   COM_TRY_END
 }
 
-REGISTER_ARC_I(
-  "VHD", "vhd", NULL, 0xDC,
-  kSignature,
-  0,
+static IInArchive * CreateArc() {
+  return new CHandler();
+}
+
+static const CArcInfo s_arcInfo = {
   NArcInfoFlags::kUseGlobalOffset,
-  NULL)
+  0xDC,
+  sizeof(kSignature) / sizeof(kSignature[0]),
+  0,
+  kSignature,
+  "VHD",
+  "vhd",
+  0,
+  CreateArc,
+  0,
+  0
+};
+
+void CHandler::Register() {
+  static bool s_registered = false;
+
+  if(!s_registered) {
+    RegisterArc(&s_arcInfo);
+    s_registered = true;
+  }
+}
 
 }}

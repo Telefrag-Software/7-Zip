@@ -183,6 +183,7 @@ set(SEVEN_ZIP_CPP_SOURCE_FILES
 	7zip/Archive/SplitHandler.cpp
 	7zip/Archive/SplitHandler.h
 	7zip/Archive/VhdHandler.cpp
+	7zip/Archive/VhdHandler.h
 	7zip/Archive/XarHandler.cpp
 	7zip/Archive/Common/CoderMixer2.cpp
 	7zip/Archive/Common/DummyOutStream.cpp
