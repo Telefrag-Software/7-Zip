@@ -30,6 +30,7 @@
 #include "../Archive/MslzHandler.h"
 #include "../Archive/MubHandler.h"
 #include "../Archive/NtfsHandler.h"
+#include "../Archive/PeHandler.h"
 #include "../Archive/PpmdHandler.h"
 #include "../Archive/QcowHandler.h"
 #include "../Archive/RpmHandler.h"
@@ -199,6 +200,8 @@ void Initialize() {
   NArchive::NMub::CHandler::Register();
   NArchive::NNsis::CHandler::Register();
   NArchive::Ntfs::CHandler::Register();
+  NArchive::NPe::CHandler::Register();
+  NArchive::NTe::CHandler::Register();
   NArchive::NPpmd::CHandler::Register();
   NArchive::NQcow::CHandler::Register();
   NArchive::NRar::CHandler::Register();
