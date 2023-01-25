@@ -140,6 +140,7 @@ set(SEVEN_ZIP_CPP_SOURCE_FILES
 	7zip/Archive/NtfsHandler.h
 	7zip/Archive/StdAfx.h
 	7zip/Archive/UefiHandler.cpp
+	7zip/Archive/UefiHandler.h
 	7zip/Archive/VmdkHandler.cpp
 	7zip/Archive/XzHandler.h
 	7zip/Archive/ArjHandler.cpp

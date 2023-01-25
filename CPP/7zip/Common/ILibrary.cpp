@@ -36,6 +36,7 @@
 #include "../Archive/SplitHandler.h"
 #include "../Archive/SquashfsHandler.h"
 #include "../Archive/SwfHandler.h"
+#include "../Archive/UefiHandler.h"
 #include "../Archive/7z/7zHandler.h"
 #include "../Archive/Cab/CabHandler.h"
 #include "../Archive/Iso/IsoHandler.h"
@@ -193,6 +194,7 @@ void Initialize() {
   NArchive::NSwf::CHandler::Register();
   NArchive::NSwfc::CHandler::Register();
   NArchive::NTar::CHandler::Register();
+  NArchive::NUefi::CHandler::Register();
   NArchive::NWim::CHandler::Register();
   NArchive::NZip::CHandler::Register();
 
