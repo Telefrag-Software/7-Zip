@@ -26,6 +26,8 @@
 
 #include "Common/HandlerOut.h"
 
+#include "XzHandler.h"
+
 using namespace NWindows;
 
 namespace NArchive {
@@ -33,149 +35,65 @@ namespace NXz {
 
 #define k_LZMA2_Name "LZMA2"
 
-
-struct CBlockInfo
+const CXzStatInfo *CHandler::GetStat() const
 {
-  unsigned StreamFlags;
-  UInt64 PackPos;
-  UInt64 PackSize; // pure value from Index record, it doesn't include pad zeros
-  UInt64 UnpackPos;
-};
+  if (_stat_defined) return &_stat;
+  if (_stat2_defined) return &_stat2;
+  return NULL;
+}
 
+#ifndef EXTRACT_ONLY
+void CHandler::InitXz()
+{
+  _filterId = 0;
+  _numSolidBytes = XZ_PROPS__BLOCK_SIZE__AUTO;
+}
+#endif // EXTRACT_ONLY
 
-class CHandler:
-  public IInArchive,
-  public IArchiveOpenSeq,
-  public IInArchiveGetStream,
-  public ISetProperties,
-
+void CHandler::Init()
+{
   #ifndef EXTRACT_ONLY
-  public IOutArchive,
-  #endif
-
-  public CMyUnknownImp,
-
-  #ifndef EXTRACT_ONLY
-    public CMultiMethodProps
+    InitXz();
+    CMultiMethodProps::Init();
   #else
-    public CCommonMethodProps
-  #endif
+    CCommonMethodProps::InitCommon();
+  #endif // EXTRACT_ONLY
+}
+
+HRESULT CHandler::Decode(NCompress::NXz::CDecoder &decoder,
+    ISequentialInStream *seqInStream,
+    ISequentialOutStream *outStream,
+    ICompressProgressInfo *progress)
 {
-  CXzStatInfo _stat;    // it's stat from backward parsing
-  CXzStatInfo _stat2;   // it's data from forward parsing, if the decoder was called
-  SRes _stat2_decode_SRes;
-  bool _stat_defined;
-  bool _stat2_defined;
-
-  const CXzStatInfo *GetStat() const
-  {
-    if (_stat_defined) return &_stat;
-    if (_stat2_defined) return &_stat2;
-    return NULL;
-  }
-  
-  bool _isArc;
-  bool _needSeekToStart;
-  bool _firstBlockWasRead;
-
-  AString _methodsString;
-
-
-  #ifndef EXTRACT_ONLY
-
-  UInt32 _filterId;
-  UInt64 _numSolidBytes;
-
-  void InitXz()
-  {
-    _filterId = 0;
-    _numSolidBytes = XZ_PROPS__BLOCK_SIZE__AUTO;
-  }
-
+  #ifndef _7ZIP_ST
+  decoder._numThreads = _numThreads;
   #endif
+  decoder._memUsage = _memUsage_Decompress;
 
-
-  void Init()
-  {
-    #ifndef EXTRACT_ONLY
-      InitXz();
-      CMultiMethodProps::Init();
-    #else
-      CCommonMethodProps::InitCommon();
-    #endif
-  }
+  HRESULT hres = decoder.Decode(seqInStream, outStream,
+      NULL, // *outSizeLimit
+      true, // finishStream
+      progress);
   
-  HRESULT SetProperty(const wchar_t *name, const PROPVARIANT &value);
-
-  HRESULT Open2(IInStream *inStream, /* UInt32 flags, */ IArchiveOpenCallback *callback);
-
-  HRESULT Decode(NCompress::NXz::CDecoder &decoder,
-      ISequentialInStream *seqInStream,
-      ISequentialOutStream *outStream,
-      ICompressProgressInfo *progress)
+  if (decoder.MainDecodeSRes_wasUsed
+      && decoder.MainDecodeSRes != SZ_ERROR_MEM
+      && decoder.MainDecodeSRes != SZ_ERROR_UNSUPPORTED)
   {
-    #ifndef _7ZIP_ST
-    decoder._numThreads = _numThreads;
-    #endif
-    decoder._memUsage = _memUsage_Decompress;
-
-    HRESULT hres = decoder.Decode(seqInStream, outStream,
-        NULL, // *outSizeLimit
-        true, // finishStream
-        progress);
-    
-    if (decoder.MainDecodeSRes_wasUsed
-        && decoder.MainDecodeSRes != SZ_ERROR_MEM
-        && decoder.MainDecodeSRes != SZ_ERROR_UNSUPPORTED)
+    // if (!_stat2_defined)
     {
-      // if (!_stat2_defined)
-      {
-        _stat2_decode_SRes = decoder.MainDecodeSRes;
-        _stat2 = decoder.Stat;
-        _stat2_defined = true;
-      }
+      _stat2_decode_SRes = decoder.MainDecodeSRes;
+      _stat2 = decoder.Stat;
+      _stat2_defined = true;
     }
-
-    return hres;
   }
 
-public:
-  MY_QUERYINTERFACE_BEGIN2(IInArchive)
-  MY_QUERYINTERFACE_ENTRY(IArchiveOpenSeq)
-  MY_QUERYINTERFACE_ENTRY(IInArchiveGetStream)
-  MY_QUERYINTERFACE_ENTRY(ISetProperties)
-  #ifndef EXTRACT_ONLY
-  MY_QUERYINTERFACE_ENTRY(IOutArchive)
-  #endif
-  MY_QUERYINTERFACE_END
-  MY_ADDREF_RELEASE
+  return hres;
+}
 
-  INTERFACE_IInArchive(;)
-  STDMETHOD(OpenSeq)(ISequentialInStream *stream);
-  STDMETHOD(GetStream)(UInt32 index, ISequentialInStream **stream);
-  STDMETHOD(SetProperties)(const wchar_t * const *names, const PROPVARIANT *values, UInt32 numProps);
-
-  #ifndef EXTRACT_ONLY
-  INTERFACE_IOutArchive(;)
-  #endif
-
-  CBlockInfo *_blocks;
-  size_t _blocksArraySize;
-  UInt64 _maxBlocksSize;
-  CMyComPtr<IInStream> _stream;
-  CMyComPtr<ISequentialInStream> _seqStream;
-
-  CXzBlock _firstBlock;
-
-  CHandler();
-  ~CHandler();
-
-  HRESULT SeekToPackPos(UInt64 pos)
-  {
-    return _stream->Seek((Int64)pos, STREAM_SEEK_SET, NULL);
-  }
-};
-
+HRESULT CHandler::SeekToPackPos(UInt64 pos)
+{
+  return _stream->Seek((Int64)pos, STREAM_SEEK_SET, NULL);
+}
 
 CHandler::CHandler():
     _blocks(NULL),
@@ -242,12 +160,6 @@ static void Lzma2PropToString(AString &s, unsigned prop)
   if (c != 0)
     s += c;
 }
-
-struct CMethodNamePair
-{
-  UInt32 Id;
-  const char *Name;
-};
 
 static const CMethodNamePair g_NamePairs[] =
 {
@@ -416,17 +328,6 @@ STDMETHODIMP CHandler::GetProperty(UInt32, PROPID propID, PROPVARIANT *value)
   COM_TRY_END
 }
 
-
-struct COpenCallbackWrap
-{
-  ICompressProgress vt;
-  IArchiveOpenCallback *OpenCallback;
-  HRESULT Res;
-  
-  // new clang shows "non-POD" warning for offsetof(), if we use constructor instead of Init()
-  void Init(IArchiveOpenCallback *progress);
-};
-
 static SRes OpenCallbackProgress(const ICompressProgress *pp, UInt64 inSize, UInt64 /* outSize */)
 {
   COpenCallbackWrap *p = CONTAINER_FROM_VTBL(pp, COpenCallbackWrap, vt);
@@ -442,37 +343,30 @@ void COpenCallbackWrap::Init(IArchiveOpenCallback *callback)
   Res = SZ_OK;
 }
 
-
-struct CXzsCPP
-{
-  CXzs p;
-  CXzsCPP() { Xzs_Construct(&p); }
-  ~CXzsCPP() { Xzs_Free(&p, &g_Alloc); }
-};
+CXzsCPP::CXzsCPP() { Xzs_Construct(&p); }
+CXzsCPP::~CXzsCPP() { Xzs_Free(&p, &g_Alloc); }
 
 #define kInputBufSize ((size_t)1 << 10)
 
-struct CLookToRead2_CPP: public CLookToRead2
+CLookToRead2_CPP::CLookToRead2_CPP()
 {
-  CLookToRead2_CPP()
-  {
-    buf = NULL;
-    LookToRead2_CreateVTable(this,
-        True // Lookahead ?
-        );
-  }
-  void Alloc(size_t allocSize)
-  {
-    buf = (Byte *)MyAlloc(allocSize);
-    if (buf)
-      this->bufSize = allocSize;
-  }
-  ~CLookToRead2_CPP()
-  {
-    MyFree(buf);
-  }
-};
+  buf = NULL;
+  LookToRead2_CreateVTable(this,
+      True // Lookahead ?
+      );
+}
 
+void CLookToRead2_CPP::Alloc(size_t allocSize)
+{
+  buf = (Byte *)MyAlloc(allocSize);
+  if (buf)
+    this->bufSize = allocSize;
+}
+
+CLookToRead2_CPP::~CLookToRead2_CPP()
+{
+  MyFree(buf);
+}
 
 static HRESULT SRes_to_Open_HRESULT(SRes res)
 {
@@ -714,16 +608,6 @@ STDMETHODIMP CHandler::Close()
 }
 
 
-struct CXzUnpackerCPP2
-{
-  Byte *InBuf;
-  // Byte *OutBuf;
-  CXzUnpacker p;
-  
-  CXzUnpackerCPP2();
-  ~CXzUnpackerCPP2();
-};
-
 CXzUnpackerCPP2::CXzUnpackerCPP2(): InBuf(NULL)
   // , OutBuf(NULL)
 {
@@ -737,45 +621,18 @@ CXzUnpackerCPP2::~CXzUnpackerCPP2()
   // MidFree(OutBuf);
 }
 
-
-class CInStream:
-  public IInStream,
-  public CMyUnknownImp
+void CInStream::InitAndSeek()
 {
-public:
-  UInt64 _virtPos;
-  UInt64 Size;
-  UInt64 _cacheStartPos;
-  size_t _cacheSize;
-  CByteBuffer _cache;
-  // UInt64 _startPos;
-  CXzUnpackerCPP2 xz;
-
-  void InitAndSeek()
-  {
-    _virtPos = 0;
-    _cacheStartPos = 0;
-    _cacheSize = 0;
-    // _startPos = startPos;
-  }
-
-  CHandler *_handlerSpec;
-  CMyComPtr<IUnknown> _handler;
-
-  MY_UNKNOWN_IMP1(IInStream)
-
-  STDMETHOD(Read)(void *data, UInt32 size, UInt32 *processedSize);
-  STDMETHOD(Seek)(Int64 offset, UInt32 seekOrigin, UInt64 *newPosition);
-
-  ~CInStream();
-};
-
+  _virtPos = 0;
+  _cacheStartPos = 0;
+  _cacheSize = 0;
+  // _startPos = startPos;
+}
 
 CInStream::~CInStream()
 {
   // _cache.Free();
 }
-
 
 static size_t FindBlock(const CBlockInfo *blocks, size_t numBlocks, UInt64 pos)
 {
@@ -791,8 +648,6 @@ static size_t FindBlock(const CBlockInfo *blocks, size_t numBlocks, UInt64 pos)
       left = mid;
   }
 }
-
-
 
 static HRESULT DecodeBlock(CXzUnpackerCPP2 &xzu,
     ISequentialInStream *seqInStream,
@@ -1412,12 +1267,35 @@ STDMETHODIMP CHandler::SetProperties(const wchar_t * const *names, const PROPVAR
   COM_TRY_END
 }
 
+static IInArchive * CreateArc() {
+  return new CHandler();
+}
 
-REGISTER_ARC_IO(
-  "xz", "xz txz", "* .tar", 0xC,
-  XZ_SIG,
-  0,
+static IOutArchive * CreateArcOut() {
+  return new CHandler();
+}
+
+static const CArcInfo s_arcInfo = {
   NArcInfoFlags::kKeepName,
-  NULL)
+  0xC,
+  sizeof(XZ_SIG) / sizeof(XZ_SIG[0]),
+  0,
+  XZ_SIG,
+  "xz",
+  "xz txz",
+  "* .tar",
+  CreateArc,
+  CreateArcOut,
+  0
+};
+
+void CHandler::Register() {
+  static bool s_registered = false;
+
+  if(!s_registered) {
+    RegisterArc(&s_arcInfo);
+    s_registered = true;
+  }
+}
 
 }}
