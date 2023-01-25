@@ -22,6 +22,8 @@
 
 #include "HandlerCont.h"
 
+#include "VmdkHandler.h"
+
 using namespace NWindows;
 
 namespace NArchive {
@@ -37,7 +39,7 @@ namespace NVmdk {
 
 
 #define SIGNATURE { 'K', 'D', 'M', 'V' }
-  
+
 static const Byte k_Signature[] = SIGNATURE;
 
 static const UInt32 k_Flags_NL         = (UInt32)1 << 0;
@@ -48,39 +50,19 @@ static const UInt32 k_Flags_Marker     = (UInt32)1 << 17;
 
 static const unsigned k_NumMidBits = 9; // num bits for index in Grain Table
 
-struct CHeader
+bool CHeader::Is_NL()         const { return (flags & k_Flags_NL) != 0; };
+bool CHeader::Is_ZeroGrain()  const { return (flags & k_Flags_ZeroGrain) != 0; };
+bool CHeader::Is_Compressed() const { return (flags & k_Flags_Compressed) != 0; };
+bool CHeader::Is_Marker()     const { return (flags & k_Flags_Marker) != 0; };
+
+bool CHeader::IsSameImageFor(const CHeader &h) const
 {
-  UInt32 flags;
-  UInt32 version;
-
-  UInt64 capacity;
-  UInt64 grainSize;
-  UInt64 descriptorOffset;
-  UInt64 descriptorSize;
-
-  UInt32 numGTEsPerGT;
-  UInt16 algo;
-  // Byte uncleanShutdown;
-  // UInt64 rgdOffset;
-  UInt64 gdOffset;
-  UInt64 overHead;
-
-  bool Is_NL()         const { return (flags & k_Flags_NL) != 0; };
-  bool Is_ZeroGrain()  const { return (flags & k_Flags_ZeroGrain) != 0; };
-  bool Is_Compressed() const { return (flags & k_Flags_Compressed) != 0; };
-  bool Is_Marker()     const { return (flags & k_Flags_Marker) != 0; };
-
-  bool Parse(const Byte *p);
-
-  bool IsSameImageFor(const CHeader &h) const
-  {
-    return flags == h.flags
-        && version == h.version
-        && capacity == h.capacity
-        && grainSize == h.grainSize
-        && algo == h.algo;
-  }
-};
+  return flags == h.flags
+      && version == h.version
+      && capacity == h.capacity
+      && grainSize == h.grainSize
+      && algo == h.algo;
+}
 
 bool CHeader::Parse(const Byte *p)
 {
@@ -115,20 +97,12 @@ enum
   k_Marker_FOOTER        = 3
 };
 
-struct CMarker
+void CMarker::Parse(const Byte *p)
 {
-  UInt64 NumSectors;
-  UInt32 SpecSize; // = 0 for metadata sectors
-  UInt32 Type;
-
-  void Parse(const Byte *p)
-  {
-    LE_64 (0, NumSectors);
-    LE_32 (8, SpecSize);
-    LE_32 (12, Type);
-  }
-};
-
+  LE_64 (0, NumSectors);
+  LE_32 (8, SpecSize);
+  LE_32 (12, Type);
+}
 
 static bool Str_to_ValName(const AString &s, AString &name, AString &val)
 {
@@ -191,25 +165,9 @@ static const char *GetNextNumber(const char *s, UInt64 &val)
   return end;
 }
 
-
-struct CExtentInfo
-{
-  AString Access;    // RW, RDONLY, or NOACCESS
-  UInt64 NumSectors; // 512 bytes sectors
-  AString Type;      // FLAT, SPARSE, ZERO, VMFS, VMFSSPARSE, VMFSRDM, VMFSRAW
-  AString FileName;
-  UInt64 StartSector; // used for FLAT
-
-  // for VMWare Player 9:
-  // PartitionUUID
-  // DeviceIdentifier
-
-  bool IsType_ZERO() const { return Type == "ZERO"; }
-  // bool IsType_FLAT() const { return Type == "FLAT"; }
-  bool IsType_Flat() const { return Type == "FLAT" || Type == "VMFS" || Type == "VMFSRAW"; }
-  
-  bool Parse(const char *s);
-};
+bool CExtentInfo::IsType_ZERO() const { return Type == "ZERO"; }
+// bool CExtentInfo::IsType_FLAT() const { return Type == "FLAT"; }
+bool CExtentInfo::IsType_Flat() const { return Type == "FLAT" || Type == "VMFS" || Type == "VMFSRAW"; }
 
 bool CExtentInfo::Parse(const char *s)
 {
@@ -255,38 +213,24 @@ bool CExtentInfo::Parse(const char *s)
   // return (*s == 0);
 }
 
-
-struct CDescriptor
+void CDescriptor::GetUnicodeName(const AString &s, UString &res)
 {
-  AString CID;
-  AString parentCID;
-  AString createType;
-  // AString encoding; // UTF-8, windows-1252 - default is UTF-8
+  if (!ConvertUTF8ToUnicode(s, res))
+    MultiByteToUnicodeString2(res, s);
+}
 
-  CObjectVector<CExtentInfo> Extents;
+void CDescriptor::Clear()
+{
+  CID.Empty();
+  parentCID.Empty();
+  createType.Empty();
+  Extents.Clear();
+}
 
-  static void GetUnicodeName(const AString &s, UString &res)
-  {
-    if (!ConvertUTF8ToUnicode(s, res))
-      MultiByteToUnicodeString2(res, s);
-  }
-
-  void Clear()
-  {
-    CID.Empty();
-    parentCID.Empty();
-    createType.Empty();
-    Extents.Clear();
-  }
-
-  bool IsThere_Parent() const
-  {
-    return !parentCID.IsEmpty() && !parentCID.IsEqualTo_Ascii_NoCase("ffffffff");
-  }
-
-  bool Parse(const Byte *p, size_t size);
-};
-
+bool CDescriptor::IsThere_Parent() const
+{
+  return !parentCID.IsEmpty() && !parentCID.IsEqualTo_Ascii_NoCase("ffffffff");
+}
 
 bool CDescriptor::Parse(const Byte *p, size_t size)
 {
@@ -335,141 +279,57 @@ bool CDescriptor::Parse(const Byte *p, size_t size)
   }
 }
 
+UInt64 CExtent::GetEndOffset() const { return StartOffset + NumBytes; }
 
-struct CExtent
+bool CExtent::IsVmdk() const { return !IsZero && !IsFlat; };
+
+CExtent::CExtent():
+    IsOK(false),
+    IsArc(false),
+    NeedDeflate(false),
+    Unsupported(false),
+    IsZero(false),
+    IsFlat(false),
+    DescriptorOK(false),
+    HeadersError(false),
+
+    ClusterBits(0),
+    ZeroSector(0),
+
+    PosInArc(0),
+
+    PhySize(0),
+    VirtSize(0),
+
+    StartOffset(0),
+    NumBytes(0),
+    FlatOffset(0)
+      {}
+
+HRESULT CExtent::Seek(UInt64 offset)
 {
-  bool IsOK;
-  bool IsArc;
-  bool NeedDeflate;
-  bool Unsupported;
-  bool IsZero;
-  bool IsFlat;
-  bool DescriptorOK;
-  bool HeadersError;
+  PosInArc = offset;
+  return Stream->Seek(offset, STREAM_SEEK_SET, NULL);
+}
 
-  unsigned ClusterBits;
-  UInt32 ZeroSector;
-
-  CObjectVector<CByteBuffer> Tables;
-
-  CMyComPtr<IInStream> Stream;
-  UInt64 PosInArc;
-  
-  UInt64 PhySize;
-  UInt64 VirtSize;     // from vmdk header of volume
-
-  UInt64 StartOffset;  // virtual offset of this extent
-  UInt64 NumBytes;     // from main descriptor, if multi-vol
-  UInt64 FlatOffset;   // in Stream
-
-  CByteBuffer DescriptorBuf;
-  CDescriptor Descriptor;
-
-  CHeader h;
-
-  UInt64 GetEndOffset() const { return StartOffset + NumBytes; }
-  
-  bool IsVmdk() const { return !IsZero && !IsFlat; };
-  // if (IsOK && IsVmdk()), then VMDK header of this extent was read
-  
-  CExtent():
-      IsOK(false),
-      IsArc(false),
-      NeedDeflate(false),
-      Unsupported(false),
-      IsZero(false),
-      IsFlat(false),
-      DescriptorOK(false),
-      HeadersError(false),
-
-      ClusterBits(0),
-      ZeroSector(0),
-      
-      PosInArc(0),
-      
-      PhySize(0),
-      VirtSize(0),
-
-      StartOffset(0),
-      NumBytes(0),
-      FlatOffset(0)
-        {}
-    
-
-  HRESULT ReadForHeader(IInStream *stream, UInt64 sector, void *data, size_t numSectors);
-  HRESULT Open3(IInStream *stream, IArchiveOpenCallback *openCallback,
-        unsigned numVols, unsigned volIndex, UInt64 &complexity);
-
-  HRESULT Seek(UInt64 offset)
-  {
-    PosInArc = offset;
-    return Stream->Seek(offset, STREAM_SEEK_SET, NULL);
-  }
-
-  HRESULT InitAndSeek()
-  {
-    if (Stream)
-      return Seek(0);
-    return S_OK;
-  }
-
-  HRESULT Read(void *data, size_t *size)
-  {
-    HRESULT res = ReadStream(Stream, data, size);
-    PosInArc += *size;
-    return res;
-  }
-};
-  
-
-class CHandler: public CHandlerImg
+HRESULT CExtent::InitAndSeek()
 {
-  bool _isArc;
-  bool _unsupported;
-  bool _unsupportedSome;
-  bool _headerError;
-  bool _missingVol;
-  bool _isMultiVol;
-  bool _needDeflate;
+  if (Stream)
+    return Seek(0);
+  return S_OK;
+}
 
-  UInt64 _cacheCluster;
-  unsigned _cacheExtent;
-  CByteBuffer _cache;
-  CByteBuffer _cacheCompressed;
-  
-  unsigned _clusterBitsMax;
-  UInt64 _phySize;
+HRESULT CExtent::Read(void *data, size_t *size)
+{
+  HRESULT res = ReadStream(Stream, data, size);
+  PosInArc += *size;
+  return res;
+}
 
-  CObjectVector<CExtent> _extents;
-
-  CBufInStream *_bufInStreamSpec;
-  CMyComPtr<ISequentialInStream> _bufInStream;
-
-  CBufPtrSeqOutStream *_bufOutStreamSpec;
-  CMyComPtr<ISequentialOutStream> _bufOutStream;
-
-  NCompress::NZlib::CDecoder *_zlibDecoderSpec;
-  CMyComPtr<ICompressCoder> _zlibDecoder;
-
-  CByteBuffer _descriptorBuf;
-  CDescriptor _descriptor;
-
-  UString _missingVolName;
-  
-  void InitAndSeekMain()
-  {
-    _virtPos = 0;
-  }
-
-  virtual HRESULT Open2(IInStream *stream, IArchiveOpenCallback *openCallback);
-  virtual void CloseAtError();
-public:
-  INTERFACE_IInArchive_Img(;)
-
-  STDMETHOD(GetStream)(UInt32 index, ISequentialInStream **stream);
-  STDMETHOD(Read)(void *data, UInt32 size, UInt32 *processedSize);
-};
-
+void CHandler::InitAndSeekMain()
+{
+  _virtPos = 0;
+}
 
 STDMETHODIMP CHandler::Read(void *data, UInt32 size, UInt32 *processedSize)
 {
@@ -1506,12 +1366,31 @@ STDMETHODIMP CHandler::GetStream(UInt32 /* index */, ISequentialInStream **strea
   COM_TRY_END
 }
 
+static IInArchive * CreateArc() {
+  return new CHandler();
+}
 
-REGISTER_ARC_I(
-  "VMDK", "vmdk", NULL, 0xC8,
+static const CArcInfo s_arcInfo = {
+  0,
+  0xC8,
+  sizeof(k_Signature) / sizeof(k_Signature[0]),
+  0,
   k_Signature,
+  "VMDK",
+  "vmdk",
   0,
+  CreateArc,
   0,
-  NULL)
+  0
+};
+
+void CHandler::Register() {
+  static bool s_registered = false;
+
+  if(!s_registered) {
+    RegisterArc(&s_arcInfo);
+    s_registered = true;
+  }
+}
 
 }}
