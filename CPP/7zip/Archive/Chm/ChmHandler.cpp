@@ -63,6 +63,8 @@ IMP_IInArchive_Props
 
 IMP_IInArchive_ArcProps_NO_Table
 
+CHandler::CHandler(bool help2): _help2(help2) {}
+
 STDMETHODIMP CHandler::GetArchiveProperty(PROPID propID, PROPVARIANT *value)
 {
   // COM_TRY_BEGIN
@@ -803,13 +805,23 @@ namespace NChm {
 
 static const Byte k_Signature[] = { 'I', 'T', 'S', 'F', 3, 0, 0, 0, 0x60, 0,  0, 0 };
 
-REGISTER_ARC_I_CLS(
-  CHandler(false),
-  "Chm", "chm chi chq chw", 0, 0xE9,
+static IInArchive * CreateArc() {
+  return new CHandler(false);
+}
+
+static const CArcInfo s_arcInfo = {
+  0,
+  0xE9,
+  sizeof(k_Signature) / sizeof(k_Signature[0]),
+  0,
   k_Signature,
+  "Chm",
+  "chm chi chq chw",
   0,
+  CreateArc,
   0,
-  NULL)
+  0
+};
 
 }
 
@@ -817,14 +829,34 @@ namespace NHxs {
 
 static const Byte k_Signature[] = { 'I', 'T', 'O', 'L', 'I', 'T', 'L', 'S', 1, 0, 0, 0, 0x28, 0, 0, 0 };
 
-REGISTER_ARC_I_CLS(
-  CHandler(true),
-  "Hxs", "hxs hxi hxr hxq hxw lit", 0, 0xCE,
-  k_Signature,
-  0,
-  NArcInfoFlags::kFindSignature,
-  NULL)
+static IInArchive * CreateArc() {
+  return new CHandler(true);
+}
 
+static const CArcInfo s_arcInfo = {
+  NArcInfoFlags::kFindSignature,
+  0xCE,
+  sizeof(k_Signature) / sizeof(k_Signature[0]),
+  0,
+  k_Signature,
+  "Hxs",
+  "hxs hxi hxr hxq hxw lit",
+  0,
+  CreateArc,
+  0,
+  0
+};
+
+}
+
+void CHandler::Register() {
+  static bool s_registered = false;
+
+  if(!s_registered) {
+    RegisterArc(&NChm::s_arcInfo);
+    RegisterArc(&NHxs::s_arcInfo);
+    s_registered = true;
+  }
 }
 
 }}

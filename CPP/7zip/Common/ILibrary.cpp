@@ -45,6 +45,7 @@
 #include "../Archive/ZHandler.h"
 #include "../Archive/7z/7zHandler.h"
 #include "../Archive/Cab/CabHandler.h"
+#include "../Archive/Chm/ChmHandler.h"
 #include "../Archive/Iso/IsoHandler.h"
 #include "../Archive/Nsis/NsisHandler.h"
 #include "../Archive/Tar/TarHandler.h"
@@ -171,6 +172,7 @@ void Initialize() {
   NArchive::NBase64::CHandler::Register();
   NArchive::NBz2::CHandler::Register();
   NArchive::NCab::CHandler::Register();
+  NArchive::NChm::CHandler::Register();
   NArchive::NCom::CHandler::Register();
   NArchive::NCpio::CHandler::Register();
   NArchive::NCramfs::CHandler::Register();
