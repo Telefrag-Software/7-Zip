@@ -3001,20 +3001,9 @@ void CHandler::Register() {
 
 }}
 
+namespace NHash {
 
-class CBlake2spHasher:
-  public IHasher,
-  public CMyUnknownImp
-{
-  CBlake2sp _blake;
-  Byte mtDummy[1 << 7];
-
-public:
-  CBlake2spHasher() { Init(); }
-
-  MY_UNKNOWN_IMP
-  INTERFACE_IHasher(;)
-};
+CBlake2spHasher::CBlake2spHasher() { Init(); }
 
 STDMETHODIMP_(void) CBlake2spHasher::Init() throw()
 {
@@ -3031,4 +3020,28 @@ STDMETHODIMP_(void) CBlake2spHasher::Final(Byte *digest) throw()
   Blake2sp_Final(&_blake, digest);
 }
 
-REGISTER_HASHER(CBlake2spHasher, 0x202, "BLAKE2sp", BLAKE2S_DIGEST_SIZE)
+UInt32 __stdcall CBlake2spHasher::GetDigestSize() throw() {
+  return BLAKE2S_DIGEST_SIZE;
+}
+
+static IHasher * CreateHasherSpecBlake2sp() {
+  return new CBlake2spHasher();
+}
+
+static const CHasherInfo s_hasherInfo_Sha1 = {
+  CreateHasherSpecBlake2sp,
+  0x202,
+  "BLAKE2sp",
+  BLAKE2S_DIGEST_SIZE
+};
+
+void CBlake2spHasher::Register() {
+  static bool s_registered;
+
+  if(!s_registered) {
+    RegisterHasher(&s_hasherInfo_Sha1);
+    s_registered = true;
+  }
+}
+
+}

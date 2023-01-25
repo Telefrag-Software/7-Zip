@@ -420,4 +420,24 @@ public:
 
 }}
 
+namespace NHash {
+
+class CBlake2spHasher:
+  public IHasher,
+  public CMyUnknownImp
+{
+  CBlake2sp _blake;
+  Byte mtDummy[1 << 7];
+
+public:
+  static void Register();
+
+  CBlake2spHasher();
+
+  MY_UNKNOWN_IMP
+  INTERFACE_IHasher(;)
+};
+
+}
+
 #endif // __RAR5_HANDLER_H

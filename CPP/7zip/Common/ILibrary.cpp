@@ -147,6 +147,7 @@ void Initialize() {
   NCrypto::CAesCoder::Register();
 
   // Register Hashers
+  NHash::CBlake2spHasher::Register();
   NHash::CCksumHasher::Register();
   NHash::CCrcHasher::Register();
   NHash::CSha1Hasher::Register();
