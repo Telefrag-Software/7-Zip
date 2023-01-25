@@ -187,6 +187,7 @@ set(SEVEN_ZIP_CPP_SOURCE_FILES
 	7zip/Archive/VhdHandler.cpp
 	7zip/Archive/VhdHandler.h
 	7zip/Archive/XarHandler.cpp
+	7zip/Archive/XarHandler.h
 	7zip/Archive/Common/CoderMixer2.cpp
 	7zip/Archive/Common/DummyOutStream.cpp
 	7zip/Archive/Common/FindSignature.cpp
