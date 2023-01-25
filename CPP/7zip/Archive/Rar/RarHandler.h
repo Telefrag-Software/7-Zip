@@ -101,6 +101,8 @@ class CHandler:
       IArchiveOpenCallback *openCallback);
 
 public:
+  static void Register();
+
   MY_QUERYINTERFACE_BEGIN2(IInArchive)
   QUERY_ENTRY_ISetCompressCodecsInfo
   MY_QUERYINTERFACE_END
@@ -113,4 +115,4 @@ public:
 
 }}
 
-#endif
+#endif // __RAR_HANDLER_H

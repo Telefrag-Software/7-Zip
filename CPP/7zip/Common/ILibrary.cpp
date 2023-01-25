@@ -49,6 +49,8 @@
 #include "../Archive/Chm/ChmHandler.h"
 #include "../Archive/Iso/IsoHandler.h"
 #include "../Archive/Nsis/NsisHandler.h"
+#include "../Archive/Rar/RarHandler.h"
+#include "../Archive/Rar/Rar5Handler.h"
 #include "../Archive/Tar/TarHandler.h"
 #include "../Archive/Udf/UdfHandler.h"
 #include "../Archive/Wim/WimHandler.h"
@@ -198,6 +200,7 @@ void Initialize() {
   NArchive::Ntfs::CHandler::Register();
   NArchive::NPpmd::CHandler::Register();
   NArchive::NQcow::CHandler::Register();
+  NArchive::NRar::CHandler::Register();
   NArchive::NRpm::CHandler::Register();
   NArchive::NSplit::CHandler::Register();
   NArchive::NSquashfs::CHandler::Register();

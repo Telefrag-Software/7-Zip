@@ -418,4 +418,4 @@ public:
 
 }}
 
-#endif
+#endif // __RAR5_HANDLER_H
